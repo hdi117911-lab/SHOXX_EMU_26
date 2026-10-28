@@ -2,3 +2,4 @@
 *.sh text eol=lf
 *.bat text eol=crlf
 *.py text eol=lf
+sdk/emulator/lib64/qt/lib/Qt6WebEngineCoreAndroidEmu.dll filter=lfs diff=lfs merge=lfs -text
