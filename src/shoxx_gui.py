@@ -21,9 +21,10 @@ import time
 import ctypes
 import zipfile
 import threading
+import random
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from PIL import Image, ImageTk, ImageDraw
+from PIL import Image, ImageTk, ImageDraw, ImageEnhance
 
 from shoxx_engine import (
     ShoXxEngine,
@@ -66,12 +67,8 @@ FONT_MONO = "Consolas"
 
 class ExecutiveSplashOverlay(tk.Frame):
     """
-    Clean, Professional Animated Boot & Diagnostics Splash Screen.
-    Displays:
-    - Minimalist Studio Header & Brand Emblem
-    - Animated System Hardware Telemetry (CPU, RAM, GPU, Hypervisor) with smooth Arc Meters
-    - Animated Component & Plugin Readiness Table
-    - Recommended Optimal Hardware Profile Summary
+    4-Second Animated Boot Splash Screen featuring `D:\\SHOXX_EMU_26\\splash.jpg`
+    with a subtle, realistic flickering neon light effect + live hardware telemetry bar.
     """
 
     def __init__(self, parent, engine: ShoXxEngine, on_complete):
@@ -84,191 +81,209 @@ class ExecutiveSplashOverlay(tk.Frame):
         self.sw = parent.winfo_screenwidth()
         self.sh = parent.winfo_screenheight()
 
-        self.canvas = tk.Canvas(self, width=self.sw, height=self.sh, bg=BG_ROOT, highlightthickness=0)
+        self.canvas = tk.Canvas(self, width=self.sw, height=self.sh, bg="#06080D", highlightthickness=0)
         self.canvas.pack(fill="both", expand=True)
 
         self.sys_rep = self.engine.analyze_system_hardware()
         self.plugins_rep = self.engine.inspect_plugins_and_tools()
 
-        self.progress_val = 0.0
+        # Pre-generate subtle neon flicker frames from D:\SHOXX_EMU_26\splash.jpg
+        self.splash_frames = []
+        self.img_w = min(1060, int(self.sw * 0.78))
+        self.img_h = min(540, int(self.sh * 0.66))
+        self._prepare_neon_splash_frames()
+
+        self.duration_sec = 4.0
+        self.start_time = time.time()
+        self.frame_idx = 0
         self.running = True
         self._animate()
 
-    def _draw_smooth_gauge(self, cx, cy, radius, pct, color, label, sublabel):
-        c = self.canvas
-        c.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, outline=BORDER_SUBTLE, width=5)
-        extent = -int(300 * (max(0.0, min(100.0, pct)) / 100.0))
-        c.create_arc(
-            cx - radius, cy - radius, cx + radius, cy + radius,
-            start=240, extent=extent, style="arc", outline=color, width=5
-        )
-        c.create_text(cx, cy - 2, text=f"{int(pct)}%", font=(FONT_UI, 13, "bold"), fill=TEXT_PRIMARY)
-        c.create_text(cx, cy + radius + 18, text=label, font=(FONT_UI, 9, "bold"), fill=TEXT_PRIMARY)
-        c.create_text(cx, cy + radius + 34, text=sublabel, font=(FONT_UI, 8), fill=TEXT_SECONDARY)
+    def _prepare_neon_splash_frames(self):
+        splash_path = os.path.join(BASE_DIR, "splash.jpg")
+        if not os.path.isfile(splash_path):
+            splash_path = os.path.join(BASE_DIR, "assets", "splash_graffiti.png")
+        if not os.path.isfile(splash_path):
+            return
+        try:
+            raw_img = Image.open(splash_path).convert("RGB")
+            # Preserve aspect ratio within max splash box
+            iw, ih = raw_img.size
+            scale = min(self.img_w / max(1, iw), self.img_h / max(1, ih))
+            target_w = max(320, int(iw * scale))
+            target_h = max(200, int(ih * scale))
+            self.img_w, self.img_h = target_w, target_h
+            base_img = raw_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+
+            # 7 subtle brightness + neon color intensity levels for smooth 30+ FPS neon flicker
+            levels = [
+                (0.84, 0.90),  # 0: Dim flicker dip
+                (0.91, 0.95),  # 1: Soft low glow
+                (0.96, 0.98),  # 2: Slight warm-up
+                (1.00, 1.00),  # 3: Nominal studio neon
+                (1.05, 1.08),  # 4: Bright neon pulse
+                (1.11, 1.15),  # 5: High neon surge
+                (1.17, 1.22),  # 6: Peak neon tube flash
+            ]
+            for b_fac, c_fac in levels:
+                frame = ImageEnhance.Brightness(base_img).enhance(b_fac)
+                frame = ImageEnhance.Color(frame).enhance(c_fac)
+                self.splash_frames.append(ImageTk.PhotoImage(frame))
+        except Exception:
+            self.splash_frames = []
+
+    def _compute_neon_flicker(self, elapsed: float):
+        """
+        Computes a subtle, realistic neon tube light flicker factor (0..6 index + border colors).
+        Combines a smooth sine breathing wave with brief, authentic neon gas micro-flickers.
+        """
+        # Smooth breathing base wave
+        wave = 0.5 + 0.5 * math.sin(elapsed * 5.2)
+
+        # Deterministic + subtle stochastic neon tube micro-flickers at characteristic intervals
+        micro_dip = 0.0
+        for pulse_t in (0.35, 0.42, 1.15, 1.85, 1.92, 2.65, 3.30, 3.38):
+            if abs(elapsed - pulse_t) < 0.045:
+                micro_dip = -0.38
+                break
+        for surge_t in (0.75, 1.45, 2.25, 3.05, 3.65):
+            if abs(elapsed - surge_t) < 0.055:
+                micro_dip = 0.32
+                break
+
+        jitter = random.uniform(-0.06, 0.06)
+        intensity = max(0.0, min(1.0, wave * 0.65 + 0.25 + micro_dip + jitter))
+
+        if not self.splash_frames:
+            return None, "#00F0FF", "#3B82F6", 2
+
+        idx = int(round(intensity * (len(self.splash_frames) - 1)))
+        idx = max(0, min(len(self.splash_frames) - 1, idx))
+
+        # Neon border colors synchronized with flicker intensity
+        if idx <= 1:
+            outer_glow = "#1E3A5F"
+            inner_neon = "#0284C7"
+            glow_w = 1
+        elif idx <= 3:
+            outer_glow = "#1D4ED8"
+            inner_neon = "#00D8FF"
+            glow_w = 2
+        elif idx <= 5:
+            outer_glow = "#3B82F6"
+            inner_neon = "#38BDF8"
+            glow_w = 3
+        else:
+            outer_glow = "#A855F7"
+            inner_neon = "#67E8F9"
+            glow_w = 4
+
+        return self.splash_frames[idx], outer_glow, inner_neon, glow_w
 
     def _animate(self):
         if not self.running:
             return
 
+        elapsed = time.time() - self.start_time
+        pct = min(100.0, (elapsed / self.duration_sec) * 100.0)
+
         c = self.canvas
         c.delete("all")
         cx = self.sw // 2
-        t = min(1.0, self.progress_val / 85.0)
+        cy = self.sh // 2
 
-        # Centered Studio Container Box
-        box_w = min(1180, int(self.sw * 0.86))
-        box_h = min(680, int(self.sh * 0.80))
+        # Outer Splash Container Size
+        hud_h = 112
+        pad = 24
+        box_w = self.img_w + pad * 2
+        box_h = self.img_h + hud_h + pad * 2
         bx1 = cx - box_w // 2
-        by1 = (self.sh - box_h) // 2
+        by1 = cy - box_h // 2
         bx2 = bx1 + box_w
         by2 = by1 + box_h
 
-        c.create_rectangle(bx1, by1, bx2, by2, fill=BG_SURFACE, outline=BORDER_SUBTLE, width=1)
-        c.create_line(bx1, by1, bx2, by1, fill=ACCENT_PRIMARY, width=3)
+        frame_photo, outer_glow, inner_neon, glow_w = self._compute_neon_flicker(elapsed)
 
-        # Top Brand Header inside Splash Card
-        c.create_text(
-            bx1 + 36, by1 + 38,
-            text="ShoXx_Emu",
-            font=(FONT_UI, 22, "bold"), fill=TEXT_PRIMARY, anchor="w"
+        # Subtle Ambient Neon Halo behind the Splash Card
+        c.create_rectangle(
+            bx1 - 6, by1 - 6, bx2 + 6, by2 + 6,
+            fill="", outline=outer_glow, width=max(1, glow_w - 1)
         )
-        c.create_text(
-            bx1 + 205, by1 + 41,
-            text="STUDIO ENTERPRISE EDITION  •  PORTABLE ANDROID 15 / 16 / 17 WORKSTATION",
-            font=(FONT_UI, 9, "bold"), fill=ACCENT_PRIMARY, anchor="w"
+        c.create_rectangle(
+            bx1 - 2, by1 - 2, bx2 + 2, by2 + 2,
+            fill=BG_SURFACE, outline=inner_neon, width=glow_w
         )
-        c.create_text(
-            bx2 - 36, by1 + 40,
-            text="[ ESC or Click to Skip ]",
-            font=(FONT_UI, 9), fill=TEXT_MUTED, anchor="e"
-        )
-        c.create_line(bx1 + 36, by1 + 68, bx2 - 36, by1 + 68, fill=BORDER_SUBTLE, width=1)
 
-        # Two-Column Diagnostic Layout inside Splash
-        col_gap = 28
-        col_w = (box_w - 72 - col_gap) // 2
-        lx1 = bx1 + 36
-        lx2 = lx1 + col_w
-        rx1 = lx2 + col_gap
-        rx2 = rx1 + col_w
-        content_y1 = by1 + 88
-        content_y2 = by2 - 84
+        # Render splash.jpg with subtle flickering neon effect
+        img_x = cx
+        img_y = by1 + pad + self.img_h // 2
+        ix1 = cx - self.img_w // 2
+        iy1 = by1 + pad
+        ix2 = ix1 + self.img_w
+        iy2 = iy1 + self.img_h
 
-        # LEFT PANEL: Installed Modules & SDK Readiness
-        c.create_rectangle(lx1, content_y1, lx2, content_y2, fill=BG_CARD, outline=BORDER_SUBTLE, width=1)
-        c.create_text(
-            lx1 + 18, content_y1 + 22,
-            text="PORTABLE SDK, PLAY STORE ROMS & ROOT MODULES",
-            font=(FONT_UI, 9, "bold"), fill=TEXT_SECONDARY, anchor="w"
-        )
-        c.create_line(lx1, content_y1 + 40, lx2, content_y1 + 40, fill=BORDER_SUBTLE, width=1)
+        if frame_photo is not None:
+            c.create_image(img_x, img_y, image=frame_photo, anchor="center")
+            # Flickering Neon Frame around splash.jpg
+            c.create_rectangle(ix1 - 2, iy1 - 2, ix2 + 2, iy2 + 2, outline=outer_glow, width=glow_w + 1)
+            c.create_rectangle(ix1, iy1, ix2, iy2, outline=inner_neon, width=max(1, glow_w - 1))
 
-        num_p = len(self.plugins_rep)
-        vis_p = max(1, int(t * (num_p + 1)))
-        row_h = (content_y2 - (content_y1 + 50)) // max(1, num_p)
+            # Subtle Corner Neon Tubes
+            clen = 28
+            for (cx_p, cy_p, dx, dy) in [
+                (ix1 - 4, iy1 - 4, 1, 1),
+                (ix2 + 4, iy1 - 4, -1, 1),
+                (ix1 - 4, iy2 + 4, 1, -1),
+                (ix2 + 4, iy2 + 4, -1, -1),
+            ]:
+                c.create_line(cx_p, cy_p, cx_p + dx * clen, cy_p, fill=inner_neon, width=2)
+                c.create_line(cx_p, cy_p, cx_p, cy_p + dy * clen, fill=inner_neon, width=2)
 
-        for idx, plug in enumerate(self.plugins_rep):
-            ry = content_y1 + 48 + idx * row_h
-            ry2 = ry + row_h - 6
-            if idx < vis_p:
-                inst = plug["installed"]
-                c.create_rectangle(lx1 + 14, ry, lx2 - 14, ry2, fill=BG_INPUT, outline=BORDER_SUBTLE, width=1)
-                dot_col = STATUS_OK if inst else STATUS_WARN
-                c.create_oval(lx1 + 26, (ry + ry2) // 2 - 4, lx1 + 34, (ry + ry2) // 2 + 4, fill=dot_col, outline="")
-                c.create_text(lx1 + 46, ry + 13, text=plug["name"], font=(FONT_UI, 9, "bold"), fill=TEXT_PRIMARY, anchor="w")
-                c.create_text(lx1 + 46, ry2 - 11, text=plug["version"], font=(FONT_UI, 8), fill=TEXT_MUTED, anchor="w")
-                c.create_text(lx2 - 24, (ry + ry2) // 2, text=plug["status_text"], font=(FONT_MONO, 8, "bold"), fill=dot_col, anchor="e")
-
-        # RIGHT PANEL: Hardware Analysis & Recommended Profile
-        c.create_rectangle(rx1, content_y1, rx2, content_y2, fill=BG_CARD, outline=BORDER_SUBTLE, width=1)
-        c.create_text(
-            rx1 + 18, content_y1 + 22,
-            text="SYSTEM TELEMETRY & OPTIMAL CONFIGURATION",
-            font=(FONT_UI, 9, "bold"), fill=TEXT_SECONDARY, anchor="w"
-        )
-        c.create_line(rx1, content_y1 + 40, rx2, content_y1 + 40, fill=BORDER_SUBTLE, width=1)
+        # Bottom Executive Telemetry & Progress HUD Strip
+        hy1 = iy2 + 14
+        hy2 = by2 - 14
+        c.create_rectangle(ix1, hy1, ix2, hy2, fill=BG_CARD, outline=BORDER_SUBTLE, width=1)
 
         sr = self.sys_rep
         opt = sr["optimal"]
-        gw = col_w // 4
-        gy = content_y1 + 98
+        ready_cnt = sum(1 for p in self.plugins_rep if p["installed"])
 
-        self._draw_smooth_gauge(
-            rx1 + gw * 0 + gw // 2, gy, 34,
-            sr["cpu_score_pct"] * t, ACCENT_PRIMARY,
-            "CPU Capability", f"{sr['cpu_threads']} Threads"
-        )
-        self._draw_smooth_gauge(
-            rx1 + gw * 1 + gw // 2, gy, 34,
-            (100 - sr["ram_load_pct"]) * t, STATUS_OK,
-            "RAM Available", f"{sr['ram_avail_mb']} MB Free"
-        )
-        self._draw_smooth_gauge(
-            rx1 + gw * 2 + gw // 2, gy, 34,
-            sr["gpu_score_pct"] * t, ACCENT_PRIMARY,
-            "GPU Acceleration", f"{sr['primary_gpu']['vram_mb']} MB VRAM"
-        )
-        self._draw_smooth_gauge(
-            rx1 + gw * 3 + gw // 2, gy, 34,
-            opt["score"] * t, STATUS_OK,
-            "System Index", f"{opt['score']} / 100"
-        )
-
-        # Hardware Specification Table
-        spec_y = content_y1 + 176
-        specs = [
-            ("Processor", f"{sr['cpu_name']} ({sr['cpu_threads']} Cores @ {sr['cpu_mhz']} MHz)"),
-            ("Memory", f"{sr['ram_total_mb']} MB Total  •  {sr['ram_avail_mb']} MB Available ({sr['ram_load_pct']}% Used)"),
-            ("Graphics", f"{sr['primary_gpu']['name']} ({sr['primary_gpu']['vram_mb']} MB VRAM)"),
-            ("Hypervisor", f"{sr['accel_detail']}  •  Portable Storage Free: {sr['disk_free_gb']} GB"),
-        ]
-        for s_i, (k_lbl, v_lbl) in enumerate(specs):
-            sy = spec_y + s_i * 34
-            c.create_rectangle(rx1 + 16, sy, rx2 - 16, sy + 28, fill=BG_INPUT, outline=BORDER_SUBTLE, width=1)
-            c.create_text(rx1 + 28, sy + 14, text=k_lbl, font=(FONT_UI, 9, "bold"), fill=TEXT_SECONDARY, anchor="w")
-            c.create_text(rx1 + 130, sy + 14, text=v_lbl, font=(FONT_UI, 9), fill=TEXT_PRIMARY, anchor="w")
-
-        # Optimal Settings Card
-        opt_y1 = spec_y + 148
-        opt_y2 = content_y2 - 14
-        c.create_rectangle(rx1 + 16, opt_y1, rx2 - 16, opt_y2, fill=BG_INPUT, outline=ACCENT_PRIMARY, width=1)
         c.create_text(
-            rx1 + 28, opt_y1 + 20,
-            text="RECOMMENDED OPTIMAL CONFIGURATION (AUTO-APPLIED)",
-            font=(FONT_UI, 9, "bold"), fill=ACCENT_PRIMARY, anchor="w"
+            ix1 + 16, hy1 + 18,
+            text="ShoXx_Emu-26  •  PORTABLE ANDROID 15 / 16 / 17 WORKSTATION",
+            font=(FONT_UI, 10, "bold"), fill=inner_neon, anchor="w"
         )
         c.create_text(
-            rx1 + 28, opt_y1 + 42,
+            ix2 - 16, hy1 + 18,
+            text=f"[ ESC or Click to Skip  •  {max(0.0, self.duration_sec - elapsed):.1f}s ]",
+            font=(FONT_MONO, 8), fill=TEXT_MUTED, anchor="e"
+        )
+
+        c.create_text(
+            ix1 + 16, hy1 + 38,
             text=(
-                f"Device Identity : Google Pixel 9 Pro XL (Retail Stealth Fingerprint 'komodo')\n"
-                f"Hardware Profile: {opt['cores_label']}  •  {opt['ram_label']}  •  GPU Mode '{opt['gpu_mode']}'\n"
-                f"Display Layout  : {self.sw - SIDEBAR_WIDTH}x{self.sh} Fullscreen Viewport + {SIDEBAR_WIDTH}px Docked Control Bar"
+                f"Hardware: {sr['cpu_name']}  |  {sr['ram_total_mb']} MB RAM  |  "
+                f"{sr['primary_gpu']['name']}  |  Modules Ready: {ready_cnt}/{len(self.plugins_rep)}  |  "
+                f"Optimal: {opt['cores_label']}, {opt['ram_label']}"
             ),
-            font=(FONT_UI, 9), fill=TEXT_SECONDARY, anchor="nw"
+            font=(FONT_UI, 8), fill=TEXT_SECONDARY, anchor="w"
         )
 
-        # Bottom Progress Bar inside Splash Container
-        p_y1 = by2 - 48
-        p_y2 = by2 - 38
-        p_w = box_w - 72
-        c.create_rectangle(bx1 + 36, p_y1, bx2 - 36, p_y2, fill=BG_INPUT, outline=BORDER_SUBTLE, width=1)
-        fill_w = int(p_w * (self.progress_val / 100.0))
+        # Flickering Neon Progress Bar (0 -> 100% over 4.0 seconds)
+        p_y1 = hy2 - 22
+        p_y2 = hy2 - 12
+        p_w = self.img_w - 32
+        c.create_rectangle(ix1 + 16, p_y1, ix2 - 16, p_y2, fill=BG_INPUT, outline=BORDER_SUBTLE, width=1)
+        fill_w = int(p_w * (pct / 100.0))
         if fill_w > 0:
-            c.create_rectangle(bx1 + 36, p_y1, bx1 + 36 + fill_w, p_y2, fill=ACCENT_PRIMARY, outline="")
-
-        c.create_text(
-            bx1 + 36, p_y1 - 14,
-            text=f"Initializing Portable Environment & Verifying Hardware Acceleration... {int(self.progress_val)}%",
-            font=(FONT_UI, 9), fill=TEXT_SECONDARY, anchor="w"
-        )
+            c.create_rectangle(ix1 + 16, p_y1, ix1 + 16 + fill_w, p_y2, fill=inner_neon, outline=outer_glow)
 
         c.bind("<Button-1>", lambda e: self.finish())
 
-        self.progress_val += 1.4
-        if self.progress_val >= 100.0:
+        if elapsed >= self.duration_sec:
             self.finish()
         else:
-            self.after(25, self._animate)
+            self.after(30, self._animate)
 
     def finish(self):
         if not self.running:
@@ -718,7 +733,33 @@ class ShoXxApp(tk.Tk):
         top_bar.pack_propagate(False)
 
         title_box = tk.Frame(top_bar, bg=BG_SURFACE)
-        title_box.pack(side="left", fill="y", pady=10)
+        title_box.pack(side="left", fill="y", pady=8)
+
+        # Top-Left Logo from D:\SHOXX_EMU_26\splash.jpg
+        self.top_logo_photo = None
+        self.window_icon_photo = None
+        logo_path = os.path.join(BASE_DIR, "splash.jpg")
+        if not os.path.isfile(logo_path):
+            logo_path = os.path.join(BASE_DIR, "assets", "splash_graffiti.png")
+        if os.path.isfile(logo_path):
+            try:
+                raw_logo = Image.open(logo_path).convert("RGB")
+                logo_thumb = raw_logo.resize((88, 46), Image.Resampling.LANCZOS)
+                self.top_logo_photo = ImageTk.PhotoImage(logo_thumb)
+                icon_thumb = raw_logo.resize((64, 64), Image.Resampling.LANCZOS)
+                self.window_icon_photo = ImageTk.PhotoImage(icon_thumb)
+                self.iconphoto(False, self.window_icon_photo)
+
+                self.top_logo_lbl = tk.Label(
+                    title_box, image=self.top_logo_photo, bg=BG_CARD,
+                    bd=0, highlightthickness=1, highlightbackground="#00D8FF",
+                    cursor="hand2"
+                )
+                self.top_logo_lbl.pack(side="left", padx=(0, 12))
+                self.top_logo_lbl.bind("<Button-1>", lambda e: self.replay_splash_overlay())
+            except Exception:
+                pass
+
         tk.Label(
             title_box, text="ShoXx_Emu",
             font=(FONT_UI, 16, "bold"), fg=TEXT_PRIMARY, bg=BG_SURFACE
