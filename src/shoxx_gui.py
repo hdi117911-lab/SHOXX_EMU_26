@@ -626,6 +626,323 @@ class ProfileManagerModal(tk.Toplevel):
         self.engine.export_portable_zip(dest_path, mode=mode, profile_id=prof["id"], on_done=_done_cb)
 
 
+class KeymapperStudioModal(tk.Toplevel):
+    """
+    Interactive Widescreen Keymapping Studio (1580x1080 Landscape Tablet Mode).
+    Allows configuring WASD movement + free touch points on a proportional 1580x1080 visual canvas.
+    """
+
+    def __init__(self, parent, engine: ShoXxEngine, on_updated=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.engine = engine
+        self.on_updated = on_updated
+        self.engine.keymapper_paused_for_modal = True
+
+        self.title("ShoXx_Emu — Widescreen Keymapping Studio (1580x1080 Landscape)")
+        self.configure(bg=BG_SURFACE, highlightbackground=BORDER_FOCUS, highlightthickness=1)
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        self.geometry(f"980x620+{(sw - 980) // 2}+{(sh - 620) // 2}")
+        self.transient(parent)
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        self.cw = 553  # Proportional to 1580 (scale = 0.35)
+        self.ch = 378  # Proportional to 1080 (scale = 0.35)
+        self.scale = 0.35
+        self.selected_idx = 0
+
+        self._build_ui()
+        self._refresh_list_and_canvas()
+
+    def _on_close(self):
+        self.engine.keymapper_paused_for_modal = False
+        if self.on_updated:
+            self.on_updated()
+        self.destroy()
+
+    def _build_ui(self):
+        hdr = tk.Frame(self, bg=BG_CARD, padx=20, pady=12)
+        hdr.pack(fill="x")
+        tk.Label(
+            hdr, text="⌨  WIDESCREEN KEYMAPPING STUDIO (1580x1080 LANDSCAPE TABLET)",
+            font=(FONT_UI, 12, "bold"), fg=TEXT_PRIMARY, bg=BG_CARD
+        ).pack(side="left")
+
+        self.btn_toggle_active = tk.Button(
+            hdr, text="", command=self._toggle_enabled,
+            font=(FONT_UI, 9, "bold"), relief="flat", padx=14, pady=5, cursor="hand2"
+        )
+        self.btn_toggle_active.pack(side="right", padx=(8, 0))
+
+        tk.Button(
+            hdr, text="Reset 1580x1080 Defaults", command=self._reset_defaults,
+            font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=TEXT_SECONDARY,
+            relief="flat", padx=10, pady=5, cursor="hand2"
+        ).pack(side="right")
+
+        tk.Frame(self, bg=BORDER_SUBTLE, height=1).pack(fill="x")
+
+        body = tk.Frame(self, bg=BG_SURFACE, padx=18, pady=14)
+        body.pack(fill="both", expand=True)
+
+        # LEFT: Proportional 1580x1080 Widescreen Touch Map Canvas
+        left_f = tk.Frame(body, bg=BG_CARD, highlightbackground=BORDER_SUBTLE, highlightthickness=1, padx=12, pady=12)
+        left_f.pack(side="left", fill="both", expand=True, padx=(0, 12))
+
+        tk.Label(
+            left_f,
+            text="1580x1080 LANDSCAPE VIEWPORT MAP (Click anywhere on canvas to move selected Key Point)",
+            font=(FONT_UI, 8, "bold"), fg=ACCENT_PRIMARY, bg=BG_CARD
+        ).pack(anchor="w", pady=(0, 8))
+
+        self.map_canvas = tk.Canvas(
+            left_f, width=self.cw, height=self.ch, bg="#080C14",
+            highlightthickness=1, highlightbackground=BORDER_FOCUS, cursor="crosshair"
+        )
+        self.map_canvas.pack()
+        self.map_canvas.bind("<Button-1>", self._on_canvas_click)
+        self.map_canvas.bind("<B1-Motion>", self._on_canvas_click)
+
+        self.coord_hint_lbl = tk.Label(
+            left_f,
+            text="Tip: Select a key on the right, then click or drag on the 1580x1080 screen map above to position it.",
+            font=(FONT_UI, 8), fg=TEXT_SECONDARY, bg=BG_CARD
+        )
+        self.coord_hint_lbl.pack(anchor="w", pady=(8, 0))
+
+        # RIGHT: Key Binding List & Custom Key Creator
+        right_f = tk.Frame(body, width=350, bg=BG_CARD, highlightbackground=BORDER_SUBTLE, highlightthickness=1, padx=12, pady=12)
+        right_f.pack(side="right", fill="y")
+        right_f.pack_propagate(False)
+
+        tk.Label(
+            right_f, text="MAPPED PC KEYS & COORDINATES",
+            font=(FONT_UI, 9, "bold"), fg=TEXT_PRIMARY, bg=BG_CARD
+        ).pack(anchor="w")
+
+        self.keys_listbox = tk.Listbox(
+            right_f, bg=BG_INPUT, fg=TEXT_PRIMARY, selectbackground=ACCENT_PRIMARY,
+            font=(FONT_MONO, 9), height=12, relief="flat",
+            highlightthickness=1, highlightbackground=BORDER_SUBTLE
+        )
+        self.keys_listbox.pack(fill="x", pady=8)
+        self.keys_listbox.bind("<<ListboxSelect>>", self._on_list_select)
+
+        # Add / Update Custom Key Form
+        form = tk.Frame(right_f, bg=BG_SURFACE, padx=10, pady=8, highlightbackground=BORDER_SUBTLE, highlightthickness=1)
+        form.pack(fill="x", pady=(2, 8))
+
+        tk.Label(form, text="ADD OR UPDATE KEY BINDING", font=(FONT_UI, 8, "bold"), fg=ACCENT_PRIMARY, bg=BG_SURFACE).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
+
+        tk.Label(form, text="Key:", font=(FONT_UI, 8), fg=TEXT_SECONDARY, bg=BG_SURFACE).grid(row=1, column=0, sticky="w")
+        self.ent_key = tk.Entry(form, width=7, bg=BG_INPUT, fg=TEXT_PRIMARY, insertbackground=TEXT_PRIMARY, relief="flat")
+        self.ent_key.grid(row=1, column=1, sticky="w", padx=(4, 8))
+
+        tk.Label(form, text="Label:", font=(FONT_UI, 8), fg=TEXT_SECONDARY, bg=BG_SURFACE).grid(row=1, column=2, sticky="w")
+        self.ent_label = tk.Entry(form, width=16, bg=BG_INPUT, fg=TEXT_PRIMARY, insertbackground=TEXT_PRIMARY, relief="flat")
+        self.ent_label.grid(row=1, column=3, sticky="ew", padx=(4, 0))
+
+        tk.Label(form, text="X:", font=(FONT_UI, 8), fg=TEXT_SECONDARY, bg=BG_SURFACE).grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.ent_x = tk.Entry(form, width=7, bg=BG_INPUT, fg=TEXT_PRIMARY, insertbackground=TEXT_PRIMARY, relief="flat")
+        self.ent_x.grid(row=2, column=1, sticky="w", padx=(4, 8), pady=(6, 0))
+
+        tk.Label(form, text="Y:", font=(FONT_UI, 8), fg=TEXT_SECONDARY, bg=BG_SURFACE).grid(row=2, column=2, sticky="w", pady=(6, 0))
+        self.ent_y = tk.Entry(form, width=7, bg=BG_INPUT, fg=TEXT_PRIMARY, insertbackground=TEXT_PRIMARY, relief="flat")
+        self.ent_y.grid(row=2, column=3, sticky="w", padx=(4, 0), pady=(6, 0))
+
+        btn_row = tk.Frame(right_f, bg=BG_CARD)
+        btn_row.pack(fill="x", pady=2)
+        btn_row.grid_columnconfigure((0, 1), weight=1, uniform="kmb")
+
+        tk.Button(
+            btn_row, text="+ Add / Save Key", command=self._save_or_add_key,
+            font=(FONT_UI, 8, "bold"), bg=ACCENT_PRIMARY, fg=TEXT_PRIMARY,
+            relief="flat", pady=6, cursor="hand2"
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 3))
+
+        tk.Button(
+            btn_row, text="Delete Selected", command=self._delete_selected_key,
+            font=(FONT_UI, 8, "bold"), bg="#261216", fg=STATUS_ERR,
+            relief="flat", pady=6, cursor="hand2"
+        ).grid(row=0, column=1, sticky="ew", padx=(3, 0))
+
+        tk.Button(
+            right_f, text="⚡ Test Selected Key Tap on Emulator Now",
+            command=self._test_selected_key,
+            font=(FONT_UI, 8, "bold"), bg=BG_INPUT, fg=STATUS_OK,
+            highlightthickness=1, highlightbackground=BORDER_SUBTLE,
+            relief="flat", pady=6, cursor="hand2"
+        ).pack(fill="x", pady=(6, 4))
+
+        tk.Button(
+            right_f, text="Done & Close Studio",
+            command=self._on_close,
+            font=(FONT_UI, 9, "bold"), bg=BG_SURFACE, fg=TEXT_PRIMARY,
+            highlightthickness=1, highlightbackground=BORDER_SUBTLE,
+            relief="flat", pady=7, cursor="hand2"
+        ).pack(fill="x", side="bottom")
+
+    def _toggle_enabled(self):
+        self.engine.toggle_keymapper()
+        self._refresh_list_and_canvas()
+
+    def _reset_defaults(self):
+        self.engine.reset_default_keymappings()
+        self.selected_idx = 0
+        self._refresh_list_and_canvas()
+
+    def _on_list_select(self, event=None):
+        sel = self.keys_listbox.curselection()
+        if not sel:
+            return
+        self.selected_idx = sel[0]
+        bindings = self.engine.keymap_config.get("bindings", [])
+        if 0 <= self.selected_idx < len(bindings):
+            b = bindings[self.selected_idx]
+            self.ent_key.delete(0, "end")
+            self.ent_key.insert(0, b.get("key", ""))
+            self.ent_label.delete(0, "end")
+            self.ent_label.insert(0, b.get("label", ""))
+            self.ent_x.delete(0, "end")
+            self.ent_x.insert(0, str(b.get("x", 790)))
+            self.ent_y.delete(0, "end")
+            self.ent_y.insert(0, str(b.get("y", 540)))
+        self._draw_canvas()
+
+    def _on_canvas_click(self, event):
+        bindings = self.engine.keymap_config.get("bindings", [])
+        if not bindings:
+            return
+        idx = max(0, min(len(bindings) - 1, self.selected_idx))
+        real_x = max(20, min(1560, int(event.x / self.scale)))
+        real_y = max(20, min(1060, int(event.y / self.scale)))
+        bindings[idx]["x"] = real_x
+        bindings[idx]["y"] = real_y
+        self.engine.save_keymappings()
+        self.ent_x.delete(0, "end")
+        self.ent_x.insert(0, str(real_x))
+        self.ent_y.delete(0, "end")
+        self.ent_y.insert(0, str(real_y))
+        self.coord_hint_lbl.config(
+            text=f"✔ Updated [{bindings[idx]['key']}] ({bindings[idx].get('label', '')}) -> X={real_x}, Y={real_y}"
+        )
+        self._refresh_list_and_canvas(keep_selection=True)
+
+    def _save_or_add_key(self):
+        k_str = self.ent_key.get().strip().upper()
+        lbl_str = self.ent_label.get().strip() or f"Custom {k_str}"
+        try:
+            x_val = max(10, min(1570, int(self.ent_x.get().strip())))
+            y_val = max(10, min(1070, int(self.ent_y.get().strip())))
+        except Exception:
+            x_val, y_val = 790, 540
+        if not k_str:
+            return
+        vk = self.engine.key_name_to_vk(k_str)
+        bindings = self.engine.keymap_config.get("bindings", [])
+        found_i = None
+        for i, b in enumerate(bindings):
+            if b.get("key", "").upper() == k_str:
+                found_i = i
+                break
+        if found_i is not None:
+            bindings[found_i]["x"] = x_val
+            bindings[found_i]["y"] = y_val
+            bindings[found_i]["label"] = lbl_str
+            bindings[found_i]["vk"] = vk
+            self.selected_idx = found_i
+        else:
+            bindings.append({
+                "key": k_str,
+                "vk": vk,
+                "x": x_val,
+                "y": y_val,
+                "type": "tap",
+                "label": lbl_str,
+            })
+            self.selected_idx = len(bindings) - 1
+        self.engine.save_keymappings()
+        self._refresh_list_and_canvas(keep_selection=True)
+
+    def _delete_selected_key(self):
+        bindings = self.engine.keymap_config.get("bindings", [])
+        if 0 <= self.selected_idx < len(bindings):
+            bindings.pop(self.selected_idx)
+            self.selected_idx = max(0, self.selected_idx - 1)
+            self.engine.save_keymappings()
+            self._refresh_list_and_canvas()
+
+    def _test_selected_key(self):
+        bindings = self.engine.keymap_config.get("bindings", [])
+        if 0 <= self.selected_idx < len(bindings):
+            b = bindings[self.selected_idx]
+            self.engine.trigger_key_action(b)
+            self.coord_hint_lbl.config(text=f"⚡ Triggered test input for [{b['key']}] at ({b['x']}, {b['y']})")
+
+    def _refresh_list_and_canvas(self, keep_selection: bool = False):
+        if self.engine.keymapper_enabled:
+            self.btn_toggle_active.config(text="● KEYMAPPER ACTIVE (F9)", bg=STATUS_OK, fg="#051B11")
+        else:
+            self.btn_toggle_active.config(text="○ ENABLE KEYMAPPER (F9)", bg=BG_INPUT, fg=TEXT_PRIMARY)
+
+        bindings = self.engine.keymap_config.get("bindings", [])
+        self.keys_listbox.delete(0, "end")
+        for b in bindings:
+            tag = "D-PAD" if b.get("type") == "swipe_dpad" else "TAP  "
+            self.keys_listbox.insert(
+                "end",
+                f"[{b['key']:^5}]  ({b['x']:4d}, {b['y']:4d})  {tag}  {b.get('label', '')}"
+            )
+        if bindings:
+            self.selected_idx = max(0, min(len(bindings) - 1, self.selected_idx))
+            self.keys_listbox.selection_set(self.selected_idx)
+            if not keep_selection:
+                self._on_list_select()
+        self._draw_canvas()
+
+    def _draw_canvas(self):
+        c = self.map_canvas
+        c.delete("all")
+        # Subtle grid lines representing 1580x1080 Widescreen Landscape viewport
+        for gx in range(0, self.cw, 55):
+            c.create_line(gx, 0, gx, self.ch, fill="#111927", width=1)
+        for gy in range(0, self.ch, 45):
+            c.create_line(0, gy, self.cw, gy, fill="#111927", width=1)
+
+        c.create_text(
+            10, 10,
+            text="1580 x 1080 WIDESCREEN LANDSCAPE GAME VIEWPORT",
+            font=(FONT_MONO, 8, "bold"), fill=TEXT_MUTED, anchor="nw"
+        )
+
+        # Draw WASD D-Pad Center Ring
+        d_cx = int(self.engine.keymap_config.get("dpad_center_x", 280) * self.scale)
+        d_cy = int(self.engine.keymap_config.get("dpad_center_y", 760) * self.scale)
+        d_r = int(self.engine.keymap_config.get("dpad_radius", 140) * self.scale)
+        c.create_oval(d_cx - d_r, d_cy - d_r, d_cx + d_r, d_cy + d_r, outline="#1E3A5F", width=2, dash=(4, 3))
+        c.create_oval(d_cx - 4, d_cy - 4, d_cx + 4, d_cy + 4, fill=ACCENT_PRIMARY, outline="")
+
+        bindings = self.engine.keymap_config.get("bindings", [])
+        for idx, b in enumerate(bindings):
+            px = int(b.get("x", 790) * self.scale)
+            py = int(b.get("y", 540) * self.scale)
+            is_sel = (idx == self.selected_idx)
+            is_dpad = (b.get("type") == "swipe_dpad")
+
+            if is_dpad:
+                c.create_line(d_cx, d_cy, px, py, fill="#1D4ED8", width=1)
+
+            r = 16 if is_sel else 13
+            ring_col = "#00F0FF" if is_sel else (STATUS_OK if not is_dpad else ACCENT_PRIMARY)
+            fill_col = "#172554" if is_sel else "#0F172A"
+
+            c.create_oval(px - r, py - r, px + r, py + r, fill=fill_col, outline=ring_col, width=2 if is_sel else 1)
+            c.create_text(px, py, text=b.get("key", "?"), font=(FONT_MONO, 8, "bold"), fill=TEXT_PRIMARY)
+            c.create_text(px, py + r + 9, text=f"{b['x']},{b['y']}", font=(FONT_MONO, 7), fill=TEXT_SECONDARY)
+
+
 class ShoXxApp(tk.Tk):
     """
     Professional Fullscreen Studio Control Center with Fixed Right-Side GAMING EXTEND Dock Panel.
@@ -640,6 +957,7 @@ class ShoXxApp(tk.Tk):
         self.is_fullscreen = True
         self.bind("<F11>", self.toggle_app_fullscreen)
         self.bind("<F10>", self.toggle_sidebar_collapse)
+        self.bind("<F9>", self.toggle_keymapper_hotkey)
         self.bind("<Escape>", self.on_escape_key)
 
         ico_path = os.path.join(BASE_DIR, "assets", "shoxx_icon.ico")
@@ -782,6 +1100,15 @@ class ShoXxApp(tk.Tk):
         )
         self.btn_toggle_view.pack(side="left", padx=4)
 
+        self.btn_top_keymapper = tk.Button(
+            nav_btns, text="⌨ Keymapper (F9)", command=self.open_keymapper_modal,
+            font=(FONT_UI, 9, "bold"), bg=BG_CARD, fg=ACCENT_PRIMARY,
+            activebackground=ACCENT_PRIMARY, activeforeground=TEXT_PRIMARY,
+            highlightthickness=1, highlightbackground=BORDER_SUBTLE,
+            relief="flat", padx=12, pady=5, cursor="hand2"
+        )
+        self.btn_top_keymapper.pack(side="left", padx=4)
+
         tk.Button(
             nav_btns, text="Profiles & ROMs", command=self.open_profile_manager_modal,
             font=(FONT_UI, 9, "bold"), bg=BG_CARD, fg=TEXT_PRIMARY,
@@ -854,6 +1181,28 @@ class ShoXxApp(tk.Tk):
             font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=TEXT_PRIMARY,
             activebackground=ACCENT_PRIMARY, relief="flat", padx=10, pady=3, cursor="hand2"
         ).pack(side="left", padx=3)
+
+        tk.Button(
+            emu_f_btns, text="▶ Play Store",
+            command=self.engine.open_google_play_store,
+            font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=STATUS_OK,
+            relief="flat", padx=8, pady=3, cursor="hand2"
+        ).pack(side="left", padx=3)
+
+        tk.Button(
+            emu_f_btns, text="🌐 Chrome",
+            command=self.engine.open_google_chrome,
+            font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=ACCENT_PRIMARY,
+            relief="flat", padx=8, pady=3, cursor="hand2"
+        ).pack(side="left", padx=3)
+
+        self.btn_hdr_keymapper = tk.Button(
+            emu_f_btns, text="⌨ Keymap (F9)",
+            command=self.open_keymapper_modal,
+            font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=ACCENT_PRIMARY,
+            relief="flat", padx=8, pady=3, cursor="hand2"
+        )
+        self.btn_hdr_keymapper.pack(side="left", padx=3)
 
         tk.Button(
             emu_f_btns, text="↻ 16:9 Landscape",
@@ -1238,10 +1587,31 @@ class ShoXxApp(tk.Tk):
 
         vp_row = tk.Frame(nav_card, bg=BG_CARD)
         vp_row.pack(fill="x", pady=(6, 0))
-        vp_row.grid_columnconfigure((0, 1, 2), weight=1, uniform="vpb")
-        tk.Button(vp_row, text="Vol +", command=lambda: self.engine.send_nav_key(24, "VOL+"), font=(FONT_UI, 8), bg=BG_SURFACE, fg=TEXT_SECONDARY, relief="flat", pady=4, cursor="hand2").grid(row=0, column=0, sticky="ew", padx=(0, 3))
-        tk.Button(vp_row, text="Vol -", command=lambda: self.engine.send_nav_key(25, "VOL-"), font=(FONT_UI, 8), bg=BG_SURFACE, fg=TEXT_SECONDARY, relief="flat", pady=4, cursor="hand2").grid(row=0, column=1, sticky="ew", padx=3)
-        tk.Button(vp_row, text="Play Store", command=self.engine.open_google_play_store, font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=ACCENT_PRIMARY, relief="flat", pady=4, cursor="hand2").grid(row=0, column=2, sticky="ew", padx=(3, 0))
+        vp_row.grid_columnconfigure((0, 1, 2, 3), weight=1, uniform="vpb")
+        tk.Button(vp_row, text="Vol +", command=lambda: self.engine.send_nav_key(24, "VOL+"), font=(FONT_UI, 8), bg=BG_SURFACE, fg=TEXT_SECONDARY, relief="flat", pady=4, cursor="hand2").grid(row=0, column=0, sticky="ew", padx=(0, 2))
+        tk.Button(vp_row, text="Vol -", command=lambda: self.engine.send_nav_key(25, "VOL-"), font=(FONT_UI, 8), bg=BG_SURFACE, fg=TEXT_SECONDARY, relief="flat", pady=4, cursor="hand2").grid(row=0, column=1, sticky="ew", padx=2)
+        tk.Button(vp_row, text="▶ Play Store", command=self.engine.open_google_play_store, font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=STATUS_OK, relief="flat", pady=4, cursor="hand2").grid(row=0, column=2, sticky="ew", padx=2)
+        tk.Button(vp_row, text="🌐 Chrome", command=self.engine.open_google_chrome, font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=ACCENT_PRIMARY, relief="flat", pady=4, cursor="hand2").grid(row=0, column=3, sticky="ew", padx=(2, 0))
+
+        hs_row = tk.Frame(nav_card, bg=BG_CARD)
+        hs_row.pack(fill="x", pady=(5, 0))
+        hs_row.grid_columnconfigure((0, 1), weight=1, uniform="hsb")
+        tk.Button(
+            hs_row, text="★ Pin Play Store & Chrome",
+            command=self.engine.setup_homescreen_playstore_and_chrome,
+            font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=TEXT_PRIMARY,
+            highlightthickness=1, highlightbackground=BORDER_SUBTLE,
+            relief="flat", pady=4, cursor="hand2"
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 3))
+
+        self.btn_sb_keymapper = tk.Button(
+            hs_row, text="⌨ Keymapper (F9)",
+            command=self.open_keymapper_modal,
+            font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=ACCENT_PRIMARY,
+            highlightthickness=1, highlightbackground=BORDER_SUBTLE,
+            relief="flat", pady=4, cursor="hand2"
+        )
+        self.btn_sb_keymapper.grid(row=0, column=1, sticky="ew", padx=(3, 0))
 
         # 2. BACKGROUND APPS TASK MANAGER
         bg_card = tk.Frame(exp, bg=BG_CARD, highlightbackground=BORDER_SUBTLE, highlightthickness=1, padx=12, pady=10)
@@ -1464,6 +1834,26 @@ class ShoXxApp(tk.Tk):
         )
         if path:
             self.engine.sync_shared_folder_to_emulator(specific_file=path)
+
+    def open_keymapper_modal(self):
+        KeymapperStudioModal(self, self.engine, on_updated=self._refresh_keymapper_buttons)
+
+    def toggle_keymapper_hotkey(self, event=None):
+        self.engine.toggle_keymapper()
+        self._refresh_keymapper_buttons()
+
+    def _refresh_keymapper_buttons(self):
+        active = self.engine.keymapper_enabled
+        fg_c = STATUS_OK if active else ACCENT_PRIMARY
+        lbl_top = "⌨ Keymap: ON (F9)" if active else "⌨ Keymapper (F9)"
+        lbl_hdr = "⌨ Keymap: ON (F9)" if active else "⌨ Keymap (F9)"
+        lbl_sb = "⌨ Keymap: ON (F9)" if active else "⌨ Keymapper (F9)"
+        if hasattr(self, "btn_top_keymapper"):
+            self.btn_top_keymapper.config(text=lbl_top, fg=fg_c)
+        if hasattr(self, "btn_hdr_keymapper"):
+            self.btn_hdr_keymapper.config(text=lbl_hdr, fg=fg_c)
+        if hasattr(self, "btn_sb_keymapper"):
+            self.btn_sb_keymapper.config(text=lbl_sb, fg=fg_c)
 
     def _on_git_update_clicked(self):
         def _done_cb(ok: bool, msg: str):

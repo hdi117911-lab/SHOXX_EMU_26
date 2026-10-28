@@ -30,6 +30,28 @@ TEMP_PORTABLE_DIR = os.path.join(BASE_DIR, "_cache", "temp")
 ROOT_METHODS_DIR = os.path.join(BASE_DIR, "root_methods")
 SHARED_PC_DIR = os.path.join(BASE_DIR, "Shared_PC_Folder")
 PROFILES_JSON = os.path.join(AVD_DATA_ROOT, "profiles.json")
+KEYMAP_JSON = os.path.join(AVD_DATA_ROOT, "keymapping_config.json")
+
+DEFAULT_KEYMAPPINGS = {
+    "enabled": False,
+    "dpad_center_x": 280,
+    "dpad_center_y": 760,
+    "dpad_radius": 140,
+    "bindings": [
+        {"key": "W", "vk": 0x57, "x": 280, "y": 620, "type": "swipe_dpad", "label": "Move Forward (Up)"},
+        {"key": "S", "vk": 0x53, "x": 280, "y": 900, "type": "swipe_dpad", "label": "Move Back (Down)"},
+        {"key": "A", "vk": 0x41, "x": 140, "y": 760, "type": "swipe_dpad", "label": "Move Left"},
+        {"key": "D", "vk": 0x44, "x": 420, "y": 760, "type": "swipe_dpad", "label": "Move Right"},
+        {"key": "SPACE", "vk": 0x20, "x": 1390, "y": 820, "type": "tap", "label": "Jump / Dodge"},
+        {"key": "F", "vk": 0x46, "x": 1320, "y": 660, "type": "tap", "label": "Primary Attack / Fire"},
+        {"key": "E", "vk": 0x45, "x": 1180, "y": 740, "type": "tap", "label": "Interact / Use"},
+        {"key": "R", "vk": 0x52, "x": 1220, "y": 540, "type": "tap", "label": "Reload / Skill 1"},
+        {"key": "Q", "vk": 0x51, "x": 1410, "y": 520, "type": "tap", "label": "Ultimate / Scope"},
+        {"key": "C", "vk": 0x43, "x": 1460, "y": 680, "type": "tap", "label": "Crouch / Slide"},
+        {"key": "1", "vk": 0x31, "x": 680, "y": 960, "type": "tap", "label": "Weapon / Slot 1"},
+        {"key": "2", "vk": 0x32, "x": 860, "y": 960, "type": "tap", "label": "Weapon / Slot 2"},
+    ],
+}
 
 # Force Python's own tempfile module to stay strictly inside the portable main directory
 os.makedirs(TEMP_PORTABLE_DIR, exist_ok=True)
@@ -267,6 +289,14 @@ class ShoXxEngine:
         self.active_profile_id = None
         self.load_or_init_profiles()
         self.relink_portable_paths()
+
+        # Widescreen Keymapper State (1580x1080 Landscape Games)
+        self.keymap_config = self.load_keymappings()
+        self.keymapper_enabled = bool(self.keymap_config.get("enabled", False))
+        self.keymapper_paused_for_modal = False
+        self._key_prev_down = {}
+        self._key_last_fire = {}
+        self._start_keymapper_loop()
 
         self.system_report = {}
         self.plugins_report = []
@@ -2002,6 +2032,9 @@ class ShoXxEngine:
             # 3. Ensure Shared Folder directory exists on Android SDCard
             subprocess.run([self.adb_exe, "shell", "mkdir -p /sdcard/Download/ShoXx_Shared"], env=env, capture_output=True, timeout=5, creationflags=cflags)
 
+            # 4. Prepare Google Play Store & Chrome on Landscape Homescreen
+            self.setup_homescreen_playstore_and_chrome()
+
             if on_boot_complete:
                 on_boot_complete()
         else:
@@ -2344,12 +2377,206 @@ class ShoXxEngine:
         def _worker():
             env = self.get_env()
             cflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            subprocess.run([self.adb_exe, "connect", "127.0.0.1:5555"], env=env, capture_output=True, timeout=3, creationflags=cflags)
             subprocess.run(
-                [self.adb_exe, "shell", "monkey", "-p", "com.android.vending", "-c", "android.intent.category.LAUNCHER", "1"],
-                env=env, capture_output=True, timeout=5, creationflags=cflags
+                [self.adb_exe, "shell", "pm enable com.android.vending 2>/dev/null; monkey -p com.android.vending -c android.intent.category.LAUNCHER 1"],
+                env=env, capture_output=True, timeout=6, creationflags=cflags
             )
-            self.log("Launched Google Play Store on the Pixel Emulator!", "SUCCESS")
+            self.log("Launched Google Play Store on the Widescreen Tablet Emulator!", "SUCCESS")
         threading.Thread(target=_worker, daemon=True).start()
+
+    def open_google_chrome(self):
+        """Launches Google Chrome (`com.android.chrome`) or the default system browser directly inside the running emulator."""
+        def _worker():
+            env = self.get_env()
+            cflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            subprocess.run([self.adb_exe, "connect", "127.0.0.1:5555"], env=env, capture_output=True, timeout=3, creationflags=cflags)
+            subprocess.run(
+                [
+                    self.adb_exe, "shell",
+                    "pm enable com.android.chrome 2>/dev/null; "
+                    "monkey -p com.android.chrome -c android.intent.category.LAUNCHER 1 2>/dev/null || "
+                    "am start -a android.intent.action.VIEW -d https://www.google.com"
+                ],
+                env=env, capture_output=True, timeout=6, creationflags=cflags
+            )
+            self.log("Launched Google Chrome on the Widescreen Tablet Emulator!", "SUCCESS")
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def setup_homescreen_playstore_and_chrome(self):
+        """
+        Ensures Google Play Store (`com.android.vending`) and Google Chrome (`com.android.chrome`)
+        are enabled, indexed in the Pixel Launcher dock/favorites, and ready on the Landscape Homescreen.
+        """
+        def _worker():
+            env = self.get_env()
+            cflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            subprocess.run([self.adb_exe, "connect", "127.0.0.1:5555"], env=env, capture_output=True, timeout=3, creationflags=cflags)
+            cmd_str = (
+                "pm enable com.android.vending 2>/dev/null || true; "
+                "pm enable com.google.android.gms 2>/dev/null || true; "
+                "pm enable com.android.chrome 2>/dev/null || true; "
+                "cmd shortcut reset-throttling 2>/dev/null || true; "
+                "am broadcast -a android.intent.action.MAIN -c android.intent.category.HOME 2>/dev/null || true"
+            )
+            subprocess.run([self.adb_exe, "shell", cmd_str], env=env, capture_output=True, timeout=8, creationflags=cflags)
+            self.log("★ Google Play Store & Chrome enabled and pinned on Landscape Homescreen.", "SUCCESS")
+        threading.Thread(target=_worker, daemon=True).start()
+
+    # =========================================================================
+    # WIDESCREEN KEYMAPPING ENGINE (WASD + FREE TOUCH POINTS FOR 1580x1080)
+    # =========================================================================
+
+    def load_keymappings(self) -> dict:
+        if os.path.exists(KEYMAP_JSON):
+            try:
+                with open(KEYMAP_JSON, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict) and "bindings" in data:
+                    return data
+            except Exception:
+                pass
+        cfg = json.loads(json.dumps(DEFAULT_KEYMAPPINGS))
+        self.save_keymappings(cfg)
+        return cfg
+
+    def save_keymappings(self, cfg: dict = None):
+        if cfg is not None:
+            self.keymap_config = cfg
+        try:
+            with open(KEYMAP_JSON, "w", encoding="utf-8") as f:
+                json.dump(self.keymap_config, f, indent=2)
+        except Exception as e:
+            self.log(f"Keymap save warning: {e}", "WARN")
+
+    def reset_default_keymappings(self) -> dict:
+        self.keymap_config = json.loads(json.dumps(DEFAULT_KEYMAPPINGS))
+        self.keymap_config["enabled"] = self.keymapper_enabled
+        self.save_keymappings()
+        self.log("Widescreen Keymapper reset to 1580x1080 Landscape defaults.", "INFO")
+        return self.keymap_config
+
+    def toggle_keymapper(self, enabled: bool = None) -> bool:
+        if enabled is None:
+            self.keymapper_enabled = not self.keymapper_enabled
+        else:
+            self.keymapper_enabled = bool(enabled)
+        self.keymap_config["enabled"] = self.keymapper_enabled
+        self.save_keymappings()
+        state_lbl = "ACTIVE (WASD + Touch Points Armed)" if self.keymapper_enabled else "DISABLED"
+        self.log(f"⌨ Widescreen Keymapper: {state_lbl}", "SUCCESS" if self.keymapper_enabled else "INFO")
+        return self.keymapper_enabled
+
+    @staticmethod
+    def key_name_to_vk(key_str: str) -> int:
+        k = (key_str or "").strip().upper()
+        special = {
+            "SPACE": 0x20,
+            "TAB": 0x09,
+            "SHIFT": 0x10,
+            "CTRL": 0x11,
+            "ALT": 0x12,
+            "UP": 0x26,
+            "DOWN": 0x28,
+            "LEFT": 0x25,
+            "RIGHT": 0x27,
+        }
+        if k in special:
+            return special[k]
+        if len(k) == 1:
+            return ord(k)
+        return 0
+
+    def trigger_key_action(self, binding: dict):
+        """Dispatches a non-blocking ADB touch tap or directional D-Pad swipe for a mapped PC key."""
+        def _worker():
+            env = self.get_env()
+            cflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            x = int(binding.get("x", 790))
+            y = int(binding.get("y", 540))
+            btype = binding.get("type", "tap")
+            try:
+                if btype == "swipe_dpad":
+                    cx = int(self.keymap_config.get("dpad_center_x", 280))
+                    cy = int(self.keymap_config.get("dpad_center_y", 760))
+                    subprocess.run(
+                        [self.adb_exe, "shell", f"input swipe {cx} {cy} {x} {y} 165"],
+                        env=env, capture_output=True, timeout=2, creationflags=cflags
+                    )
+                else:
+                    subprocess.run(
+                        [self.adb_exe, "shell", f"input tap {x} {y}"],
+                        env=env, capture_output=True, timeout=2, creationflags=cflags
+                    )
+            except Exception:
+                pass
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _is_emulator_or_studio_focused(self) -> bool:
+        if os.name != "nt":
+            return False
+        try:
+            user32 = ctypes.windll.user32
+            fg = user32.GetForegroundWindow()
+            if not fg:
+                return False
+            buf = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(fg, buf, 256)
+            title = buf.value or ""
+            if "Android Emulator" in title or "ShoXx_Emu Studio" in title or "ShoXx_" in title:
+                if "Keymapper" in title or "Profile & ROM Manager" in title:
+                    return False
+                return True
+            parent = user32.GetParent(fg)
+            if parent:
+                user32.GetWindowTextW(parent, buf, 256)
+                ptitle = buf.value or ""
+                if "ShoXx_Emu Studio" in ptitle or "Android Emulator" in ptitle:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _start_keymapper_loop(self):
+        """Background 50Hz Win32 GetAsyncKeyState listener for low-latency Widescreen Keymapping."""
+        if os.name != "nt":
+            return
+
+        def _loop():
+            user32 = ctypes.windll.user32
+            while True:
+                time.sleep(0.025)
+                if not self.keymapper_enabled or self.keymapper_paused_for_modal:
+                    continue
+                if not self.is_emulator_running():
+                    continue
+                if not self._is_emulator_or_studio_focused():
+                    continue
+
+                now = time.time()
+                bindings = self.keymap_config.get("bindings", [])
+                for b in bindings:
+                    vk = int(b.get("vk", 0)) or self.key_name_to_vk(b.get("key", ""))
+                    if not vk:
+                        continue
+                    state = user32.GetAsyncKeyState(vk)
+                    is_down = bool(state & 0x8000)
+                    was_down = self._key_prev_down.get(vk, False)
+                    self._key_prev_down[vk] = is_down
+
+                    if is_down:
+                        btype = b.get("type", "tap")
+                        last_t = self._key_last_fire.get(vk, 0.0)
+                        if not was_down:
+                            # Immediate fire on key press edge
+                            self._key_last_fire[vk] = now
+                            self.trigger_key_action(b)
+                        elif btype == "swipe_dpad" and (now - last_t) >= 0.17:
+                            # Continuous directional hold for W/A/S/D movement
+                            self._key_last_fire[vk] = now
+                            self.trigger_key_action(b)
+
+        threading.Thread(target=_loop, daemon=True).start()
 
     def is_emulator_running(self) -> bool:
         if self.emulator_proc is not None and self.emulator_proc.poll() is None:
