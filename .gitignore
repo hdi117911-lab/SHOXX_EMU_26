@@ -1,0 +1,48 @@
+# =============================================================================
+# ShoXx_Emu — Git Ignore Rules (AVD Data, User-Specific Files & Local Runtimes)
+# =============================================================================
+
+# 1. AVD Data & User Emulator Profiles / Containers / ADB Keys (Strictly Ignored)
+avd_data/*
+!avd_data/.gitkeep
+
+# 2. User-Specific Shared Folder Contents (PC <-> Emulator Transfer Files)
+Shared_PC_Folder/*
+!Shared_PC_Folder/.gitkeep
+!Shared_PC_Folder/SHOXX_SHARED_FOLDER_INFO.txt
+
+# 3. Runtime Cache, Temp & Download Directories
+_cache/*
+!_cache/.gitkeep
+downloads/*
+!downloads/.gitkeep
+
+# 4. Local Host SDK & System Images (Auto-provisioned via One-Click Auto-Setup)
+sdk/*
+!sdk/.gitkeep
+
+# 5. Local Portable Python Runtime Environment
+python_portable/*
+!python_portable/.gitkeep
+
+# 6. Python Bytecode & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# 7. User-Specific Exports, Logs, Lock Files & OS/IDE Metadata
+*.log
+*.lock
+*.tmp
+*.bak
+*.orig_bak
+*_Portable_Profile.zip
+ShoXx_Emu_Portable_Core.zip
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store

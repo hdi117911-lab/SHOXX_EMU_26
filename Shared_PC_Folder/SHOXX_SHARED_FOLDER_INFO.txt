@@ -1,0 +1,3 @@
+=== SHOXX_EMU SHARED PC <-> EMULATOR FOLDER ===
+Alle Dateien in diesem Ordner können mit 1 Klick über das rechte GAMING EXTEND Panel
+direkt auf das emulierte Pixel-Smartphone (/sdcard/Download/ShoXx_Shared) übertragen werden!
