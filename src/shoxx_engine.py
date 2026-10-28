@@ -1154,6 +1154,56 @@ class ShoXxEngine:
         self.log(f"✔ Successfully imported & relinked Portable Profile: '{imported_prof['name']}' ({imported_prof['avd_name']})", "SUCCESS")
         return imported_prof
 
+    def git_pull_update(self, on_done=None):
+        """
+        In-App Git Update & Sync Engine:
+        Synchronizes the portable workstation with `https://github.com/hdi117911-lab/SHOXX_EMU_26.git`
+        via `git pull --ff-only origin main` while preserving all local profiles in `avd_data/`.
+        """
+        def _worker():
+            try:
+                cflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+                self.progress(20, "CHECKING GITHUB REPOSITORY (hdi117911-lab/SHOXX_EMU_26) FOR UPDATES...")
+                self.log("🔄 [GIT SYNC] Checking https://github.com/hdi117911-lab/SHOXX_EMU_26.git (main) for updates...", "CYBER")
+
+                r_fetch = subprocess.run(
+                    ["git", "fetch", "origin", "main"],
+                    cwd=BASE_DIR, capture_output=True, text=True, timeout=30, creationflags=cflags
+                )
+                if r_fetch.returncode != 0:
+                    err_msg = (r_fetch.stderr or r_fetch.stdout or "Git fetch failed").strip()
+                    self.progress(0, "GIT UPDATE CHECK FAILED")
+                    self.log(f"[GIT SYNC] Fetch warning: {err_msg}", "WARN")
+                    if on_done:
+                        on_done(False, err_msg)
+                    return
+
+                self.progress(65, "PULLING LATEST COMMITS FROM ORIGIN/MAIN...")
+                r_pull = subprocess.run(
+                    ["git", "pull", "--ff-only", "origin", "main"],
+                    cwd=BASE_DIR, capture_output=True, text=True, timeout=60, creationflags=cflags
+                )
+                out = ((r_pull.stdout or "") + "\n" + (r_pull.stderr or "")).strip()
+                self.relink_portable_paths()
+
+                if r_pull.returncode == 0:
+                    self.progress(100, "✔ GIT REPOSITORY SYNCHRONIZED WITH ORIGIN/MAIN")
+                    self.log(f"✔ [GIT SYNC] {out}", "SUCCESS")
+                    if on_done:
+                        on_done(True, out)
+                else:
+                    self.progress(100, "GIT SYNC WARNING (LOCAL MODIFICATIONS PRESENT)")
+                    self.log(f"[GIT SYNC] Pull notice: {out}", "WARN")
+                    if on_done:
+                        on_done(False, out)
+            except Exception as e:
+                self.progress(0, f"GIT SYNC ERROR: {e}")
+                self.log(f"[GIT SYNC] Error: {e}", "ERROR")
+                if on_done:
+                    on_done(False, str(e))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     # =========================================================================
     # DEEP HARDWARE & SYSTEM ANALYZER + OPTIMAL SETTINGS ENGINE
     # =========================================================================

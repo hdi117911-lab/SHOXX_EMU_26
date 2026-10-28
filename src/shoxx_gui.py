@@ -18,6 +18,8 @@ import os
 import sys
 import math
 import time
+import ctypes
+import zipfile
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -657,6 +659,7 @@ class ShoXxApp(tk.Tk):
         self.engine.dpi = opt["dpi"]
 
         self._build_dashboard_ui()
+        self.after(150, self._setup_native_win32_file_drop)
         self.splash = ExecutiveSplashOverlay(self, self.engine, on_complete=self._on_splash_finished)
 
     def toggle_app_fullscreen(self, event=None):
@@ -730,6 +733,14 @@ class ShoXxApp(tk.Tk):
         tk.Button(
             nav_btns, text="Profiles & ROMs", command=self.open_profile_manager_modal,
             font=(FONT_UI, 9, "bold"), bg=BG_CARD, fg=TEXT_PRIMARY,
+            activebackground=ACCENT_PRIMARY, activeforeground=TEXT_PRIMARY,
+            highlightthickness=1, highlightbackground=BORDER_SUBTLE,
+            relief="flat", padx=12, pady=5, cursor="hand2"
+        ).pack(side="left", padx=4)
+
+        tk.Button(
+            nav_btns, text="Git Update", command=self._on_git_update_clicked,
+            font=(FONT_UI, 9, "bold"), bg=BG_CARD, fg=ACCENT_PRIMARY,
             activebackground=ACCENT_PRIMARY, activeforeground=TEXT_PRIMARY,
             highlightthickness=1, highlightbackground=BORDER_SUBTLE,
             relief="flat", padx=12, pady=5, cursor="hand2"
@@ -1133,7 +1144,7 @@ class ShoXxApp(tk.Tk):
             font=(FONT_UI, 8, "bold"), fg=TEXT_SECONDARY, bg=BG_CARD
         ).pack(anchor="w")
         tk.Label(
-            apk_card, text="Supports .apk, .xapk (Split APKs + OBB), .apkm",
+            apk_card, text="Supports .apk, .xapk (Split + OBB), .apkm  •  Drag & Drop Ready",
             font=(FONT_UI, 8), fg=TEXT_MUTED, bg=BG_CARD
         ).pack(anchor="w", pady=(0, 6))
 
@@ -1153,7 +1164,7 @@ class ShoXxApp(tk.Tk):
             font=(FONT_UI, 8, "bold"), fg=TEXT_SECONDARY, bg=BG_CARD
         ).pack(anchor="w")
         tk.Label(
-            sh_card, text="./Shared_PC_Folder ↔ /sdcard/Download/ShoXx_Shared",
+            sh_card, text="./Shared_PC_Folder ↔ /sdcard/Download/ShoXx_Shared (Drag & Drop)",
             font=(FONT_UI, 8), fg=TEXT_MUTED, bg=BG_CARD
         ).pack(anchor="w", pady=(0, 6))
 
@@ -1295,6 +1306,136 @@ class ShoXxApp(tk.Tk):
         )
         if path:
             self.engine.sync_shared_folder_to_emulator(specific_file=path)
+
+    def _on_git_update_clicked(self):
+        def _done_cb(ok: bool, msg: str):
+            def _notify():
+                self.refresh_component_badges()
+                if ok:
+                    messagebox.showinfo(
+                        "Git Repository Update (origin/main)",
+                        f"Repository https://github.com/hdi117911-lab/SHOXX_EMU_26.git synchronized:\n\n{msg}"
+                    )
+                else:
+                    messagebox.showwarning(
+                        "Git Update Notice",
+                        f"Git sync returned a notice:\n\n{msg}"
+                    )
+            self.after(0, _notify)
+
+        self.engine.git_pull_update(on_done=_done_cb)
+
+    def _setup_native_win32_file_drop(self):
+        """
+        Hooks native Win32 WM_DROPFILES (DragAcceptFiles) on the ShoXx_Emu studio window
+        so users can drag & drop .apk, .xapk, .apkm, .apks, Profile .zip, or any PC file
+        directly from Windows Explorer onto the application!
+        """
+        if os.name != "nt":
+            return
+        try:
+            user32 = ctypes.windll.user32
+            shell32 = ctypes.windll.shell32
+
+            GWLP_WNDPROC = -4
+            WM_DROPFILES = 0x0233
+
+            WNDPROC = ctypes.WINFUNCTYPE(
+                ctypes.c_ssize_t,
+                ctypes.c_void_p,
+                ctypes.c_uint,
+                ctypes.c_size_t,
+                ctypes.c_ssize_t
+            )
+
+            user32.SetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+            user32.SetWindowLongPtrW.restype = ctypes.c_void_p
+            user32.CallWindowProcW.argtypes = [
+                ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_ssize_t
+            ]
+            user32.CallWindowProcW.restype = ctypes.c_ssize_t
+            shell32.DragAcceptFiles.argtypes = [ctypes.c_void_p, ctypes.c_bool]
+            shell32.DragQueryFileW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_wchar_p, ctypes.c_uint]
+            shell32.DragQueryFileW.restype = ctypes.c_uint
+            shell32.DragFinish.argtypes = [ctypes.c_void_p]
+
+            self._wndproc_refs = []
+            self._orig_wndprocs = {}
+
+            inner_hwnd = self.winfo_id()
+            top_hwnd = user32.GetParent(inner_hwnd) or inner_hwnd
+            target_hwnds = list({h for h in (inner_hwnd, top_hwnd) if h})
+
+            for hwnd in target_hwnds:
+                shell32.DragAcceptFiles(hwnd, True)
+
+                def _make_proc(target_h):
+                    def _wndproc(h, msg, wparam, lparam):
+                        if msg == WM_DROPFILES:
+                            hdrop = ctypes.c_void_p(wparam)
+                            count = shell32.DragQueryFileW(hdrop, 0xFFFFFFFF, None, 0)
+                            dropped = []
+                            for idx in range(count):
+                                length = shell32.DragQueryFileW(hdrop, idx, None, 0)
+                                buf = ctypes.create_unicode_buffer(length + 1)
+                                shell32.DragQueryFileW(hdrop, idx, buf, length + 1)
+                                dropped.append(buf.value)
+                            shell32.DragFinish(hdrop)
+                            if dropped:
+                                self.after(0, lambda fls=dropped: self.handle_dropped_files(fls))
+                            return 0
+                        orig = self._orig_wndprocs.get(target_h)
+                        if orig:
+                            return user32.CallWindowProcW(orig, h, msg, wparam, lparam)
+                        return 0
+                    return WNDPROC(_wndproc)
+
+                cb = _make_proc(hwnd)
+                self._wndproc_refs.append(cb)
+                prev = user32.SetWindowLongPtrW(hwnd, GWLP_WNDPROC, ctypes.cast(cb, ctypes.c_void_p).value)
+                self._orig_wndprocs[hwnd] = prev
+        except Exception as e:
+            self.append_log(f"Drag & Drop hook notice: {e}", "WARN")
+
+    def handle_dropped_files(self, file_paths: list):
+        """
+        Routes dropped files automatically by type:
+        - `.apk`, `.xapk`, `.apkm`, `.apks` -> Installs package & OBB onto Emulator
+        - `.zip` containing `profile_manifest.json` or `avd_data/` -> Imports Portable Profile
+        - Any other file -> Copies into `./Shared_PC_Folder` and syncs to `/sdcard/Download/ShoXx_Shared`
+        """
+        for path in file_paths:
+            if not path or not os.path.exists(path):
+                continue
+            ext = os.path.splitext(path)[1].lower()
+            fname = os.path.basename(path)
+
+            if ext in (".apk", ".xapk", ".apkm", ".apks"):
+                self.append_log(f"📦 [DRAG & DROP] Detected Android Package '{fname}' — starting automatic installation...", "CYBER")
+                self.engine.install_apk_or_xapk(path)
+            elif ext == ".zip":
+                is_profile_zip = False
+                try:
+                    with zipfile.ZipFile(path, "r") as zf:
+                        names = zf.namelist()
+                        if "profile_manifest.json" in names or any("avd_data/" in n.replace("\\", "/") for n in names):
+                            is_profile_zip = True
+                except Exception:
+                    pass
+
+                if is_profile_zip:
+                    self.append_log(f"🔄 [DRAG & DROP] Detected Portable Profile ZIP '{fname}' — importing profile...", "CYBER")
+                    try:
+                        imp = self.engine.import_profile_zip(path)
+                        self._on_profile_switched(imp)
+                    except Exception as e:
+                        self.append_log(f"Profile ZIP Drop Error: {e}", "ERROR")
+                else:
+                    self.append_log(f"📂 [DRAG & DROP] Transferring '{fname}' to Shared Folder (/sdcard/Download/ShoXx_Shared)...", "CYBER")
+                    self.engine.sync_shared_folder_to_emulator(specific_file=path)
+            else:
+                self.append_log(f"📂 [DRAG & DROP] Transferring '{fname}' to Shared Folder (/sdcard/Download/ShoXx_Shared)...", "CYBER")
+                self.engine.sync_shared_folder_to_emulator(specific_file=path)
 
     def open_profile_manager_modal(self):
         ProfileManagerModal(self, self.engine, on_profile_selected=self._on_profile_switched)
@@ -1455,12 +1596,18 @@ class ShoXxApp(tk.Tk):
             self.after(500, self.refresh_background_apps_list)
 
     def append_log_threadsafe(self, msg: str, level: str = "INFO"):
-        self.after(0, lambda: self.append_log(msg, level))
+        try:
+            self.after(0, lambda: self.append_log(msg, level))
+        except Exception:
+            pass
 
     def append_log(self, msg: str, level: str = "INFO"):
-        ts = time.strftime("%H:%M:%S")
-        self.log_text.insert("end", f"[{ts}] {msg}\n", level)
-        self.log_text.see("end")
+        try:
+            ts = time.strftime("%H:%M:%S")
+            self.log_text.insert("end", f"[{ts}] {msg}\n", level)
+            self.log_text.see("end")
+        except Exception:
+            pass
 
     def update_progress_threadsafe(self, pct: float, status: str = ""):
         def _upd():
@@ -1468,7 +1615,10 @@ class ShoXxApp(tk.Tk):
             if status:
                 self.progress_status = status
             self.refresh_component_badges()
-        self.after(0, _upd)
+        try:
+            self.after(0, _upd)
+        except Exception:
+            pass
 
     def _draw_mini_gauge(self, canvas, cx, cy, r, pct, color, title, sub):
         canvas.create_oval(cx - r, cy - r, cx + r, cy + r, outline=BORDER_SUBTLE, width=5)
