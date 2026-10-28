@@ -371,7 +371,7 @@ class ProfileManagerModal(tk.Toplevel):
         tk.Label(right_f, text="CREATE NEW PROFILE", font=(FONT_UI, 9, "bold"), fg=TEXT_SECONDARY, bg=BG_CARD).pack(anchor="w", pady=(0, 8))
 
         tk.Label(right_f, text="Profile Name", font=(FONT_UI, 9), fg=TEXT_SECONDARY, bg=BG_CARD).pack(anchor="w")
-        self.new_name_var = tk.StringVar(value="Pixel 9 Pro XL — Work Profile")
+        self.new_name_var = tk.StringVar(value="Pixel Tablet Landscape — Work Profile")
         tk.Entry(
             right_f, textvariable=self.new_name_var, font=(FONT_UI, 10),
             bg=BG_INPUT, fg=TEXT_PRIMARY, insertbackground=TEXT_PRIMARY,
@@ -384,8 +384,8 @@ class ProfileManagerModal(tk.Toplevel):
         os_m.config(bg=BG_INPUT, fg=TEXT_PRIMARY, font=(FONT_UI, 9), highlightthickness=1, highlightbackground=BORDER_SUBTLE, relief="flat")
         os_m.pack(fill="x", pady=(2, 10))
 
-        tk.Label(right_f, text="Retail Smartphone Model", font=(FONT_UI, 9), fg=TEXT_SECONDARY, bg=BG_CARD).pack(anchor="w")
-        self.new_pix_var = tk.StringVar(value="pixel_9_pro_xl")
+        tk.Label(right_f, text="Retail Tablet / Smartphone Model", font=(FONT_UI, 9), fg=TEXT_SECONDARY, bg=BG_CARD).pack(anchor="w")
+        self.new_pix_var = tk.StringVar(value="pixel_tablet")
         pix_m = tk.OptionMenu(right_f, self.new_pix_var, *PIXEL_PROFILES.keys())
         pix_m.config(bg=BG_INPUT, fg=TEXT_PRIMARY, font=(FONT_UI, 9), highlightthickness=1, highlightbackground=BORDER_SUBTLE, relief="flat")
         pix_m.pack(fill="x", pady=(2, 10))
@@ -806,9 +806,10 @@ class ShoXxApp(tk.Tk):
         self.active_prof_lbl.pack(fill="x")
 
         p_curr = self.engine.get_active_profile()
+        pix_c = PIXEL_PROFILES.get(p_curr.get("pixel_model", "pixel_tablet"), PIXEL_PROFILES["pixel_tablet"])
         self.active_prof_sub = tk.Label(
             prof_card,
-            text=f"Stealth Identity: Google Pixel 9 Pro XL (komodo)  •  IMEI: {p_curr.get('imei')}  •  Carrier: {p_curr.get('carrier', 'Telekom.de')}",
+            text=f"Stealth Identity: {pix_c['manufacturer']} {pix_c['model']} ({pix_c['device']} • Landscape)  •  IMEI: {p_curr.get('imei')}  •  Carrier: {p_curr.get('carrier', 'Telekom.de')}",
             font=(FONT_UI, 8), fg=TEXT_SECONDARY, bg=BG_CARD, anchor="w"
         )
         self.active_prof_sub.pack(fill="x", pady=(2, 0))
@@ -1026,8 +1027,9 @@ class ShoXxApp(tk.Tk):
             ("▶", self.engine.open_google_play_store, ACCENT_PRIMARY),
             ("📦", self.browse_and_install_apk_or_xapk, ACCENT_PRIMARY),
             ("📂", self.pick_and_copy_file_to_emulator, TEXT_PRIMARY),
-            ("🛡", lambda: threading.Thread(target=self.engine.apply_live_stealth_smartphone_identity, daemon=True).start(), STATUS_OK),
-            ("⛶", lambda: self.engine.maximize_emulator_window(True, leave_sidebar=True), TEXT_SECONDARY),
+            ("─", lambda: self.engine.control_emulator_window("minimize"), TEXT_PRIMARY),
+            ("□", lambda: self.engine.control_emulator_window("maximize"), TEXT_PRIMARY),
+            ("❐", lambda: self.engine.control_emulator_window("restore_dock"), ACCENT_PRIMARY),
             ("■", self.engine.stop_emulator, STATUS_ERR),
         ]
         for sym, cmd, fg_c in slim_actions:
@@ -1198,26 +1200,51 @@ class ShoXxApp(tk.Tk):
             font=(FONT_UI, 8), bg=BG_SURFACE, fg=TEXT_SECONDARY, relief="flat", pady=5, cursor="hand2"
         ).pack(fill="x", pady=(4, 0))
 
-        # 5. STEALTH & WINDOW MANAGEMENT
+        # 5. EMULATOR WINDOW FRAME & STEALTH CONTROLS
         st_card = tk.Frame(exp, bg=BG_CARD, highlightbackground=BORDER_SUBTLE, highlightthickness=1, padx=12, pady=10)
         st_card.pack(fill="both", expand=True, padx=12, pady=(6, 12))
 
         tk.Label(
-            st_card, text="SYSTEM & STEALTH CONTROLS",
+            st_card, text="EMULATOR WINDOW FRAME & STEALTH",
             font=(FONT_UI, 8, "bold"), fg=TEXT_SECONDARY, bg=BG_CARD
-        ).pack(anchor="w", pady=(0, 6))
+        ).pack(anchor="w", pady=(0, 4))
+
+        win_row = tk.Frame(st_card, bg=BG_CARD)
+        win_row.pack(fill="x", pady=(0, 6))
+        win_row.grid_columnconfigure((0, 1, 2, 3), weight=1, uniform="winb")
 
         tk.Button(
-            st_card, text="Re-Apply Smartphone Stealth Identity",
-            command=lambda: threading.Thread(target=self.engine.apply_live_stealth_smartphone_identity, daemon=True).start(),
+            win_row, text="─ Min",
+            command=lambda: self.engine.control_emulator_window("minimize"),
+            font=(FONT_UI, 8, "bold"), bg=BG_INPUT, fg=TEXT_PRIMARY,
+            highlightthickness=1, highlightbackground=BORDER_SUBTLE, relief="flat", pady=5, cursor="hand2"
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 2))
+
+        tk.Button(
+            win_row, text="□ Max",
+            command=lambda: self.engine.control_emulator_window("maximize"),
+            font=(FONT_UI, 8, "bold"), bg=BG_INPUT, fg=TEXT_PRIMARY,
+            highlightthickness=1, highlightbackground=BORDER_SUBTLE, relief="flat", pady=5, cursor="hand2"
+        ).grid(row=0, column=1, sticky="ew", padx=2)
+
+        tk.Button(
+            win_row, text="❐ Dock",
+            command=lambda: self.engine.control_emulator_window("restore_dock"),
+            font=(FONT_UI, 8, "bold"), bg=BG_INPUT, fg=ACCENT_PRIMARY,
+            highlightthickness=1, highlightbackground=BORDER_SUBTLE, relief="flat", pady=5, cursor="hand2"
+        ).grid(row=0, column=2, sticky="ew", padx=2)
+
+        tk.Button(
+            win_row, text="↻ 16:9",
+            command=self.engine.force_landscape_tablet_mode,
             font=(FONT_UI, 8, "bold"), bg=BG_INPUT, fg=STATUS_OK,
             highlightthickness=1, highlightbackground=BORDER_SUBTLE, relief="flat", pady=5, cursor="hand2"
-        ).pack(fill="x", pady=2)
+        ).grid(row=0, column=3, sticky="ew", padx=(2, 0))
 
         tk.Button(
-            st_card, text="Dock Emulator Window Next to Sidebar",
-            command=lambda: self.engine.maximize_emulator_window(True, leave_sidebar=True),
-            font=(FONT_UI, 8), bg=BG_INPUT, fg=TEXT_PRIMARY,
+            st_card, text="Re-Apply Tablet/Smartphone Stealth Identity",
+            command=lambda: threading.Thread(target=self.engine.apply_live_stealth_smartphone_identity, daemon=True).start(),
+            font=(FONT_UI, 8, "bold"), bg=BG_INPUT, fg=STATUS_OK,
             highlightthickness=1, highlightbackground=BORDER_SUBTLE, relief="flat", pady=5, cursor="hand2"
         ).pack(fill="x", pady=2)
 
@@ -1254,7 +1281,7 @@ class ShoXxApp(tk.Tk):
 
         self.update_idletasks()
         if self.engine.is_emulator_running():
-            self.engine.maximize_emulator_window(True, leave_sidebar=True)
+            self.engine.maximize_emulator_window(fullscreen_borderless=False, leave_sidebar=True)
 
     # =========================================================================
     # EVENT HANDLERS

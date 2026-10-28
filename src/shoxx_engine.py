@@ -80,8 +80,59 @@ ANDROID_VERSIONS = {
     },
 }
 
-# Real Retail Smartphone Fingerprints for Anti-Emulator Stealth Spoofing
+# Real Retail Tablet & Smartphone Fingerprints for Anti-Emulator Stealth Spoofing (Default: Landscape Tablet)
 PIXEL_PROFILES = {
+    "pixel_tablet": {
+        "id": "pixel_tablet",
+        "display": "Google Pixel Tablet (tangorpro - Landscape Tablet Stealth)",
+        "brand": "google",
+        "manufacturer": "Google",
+        "model": "Pixel Tablet",
+        "device": "tangorpro",
+        "product": "tangorpro",
+        "board": "tangorpro",
+        "hardware": "tangorpro",
+        "soc_manufacturer": "Google",
+        "soc_model": "Tensor G2",
+        "fingerprint": "google/tangorpro/tangorpro:16/BP22.250325.006/13344233:user/release-keys",
+        "description": "tangorpro-user 16 BP22.250325.006 13344233 release-keys",
+        "baseband": "g5300q-250311-250325-B-13281994",
+        "bootloader": "tangorpro-15.1-13129455",
+    },
+    "galaxy_tab_s10_ultra": {
+        "id": "galaxy_tab_s10_ultra",
+        "display": "Samsung Galaxy Tab S10 Ultra (gts10u - Landscape Tablet Stealth)",
+        "brand": "samsung",
+        "manufacturer": "Samsung",
+        "model": "SM-X926B",
+        "device": "gts10u",
+        "product": "gts10uxx",
+        "board": "mtx926",
+        "hardware": "mt6989",
+        "soc_manufacturer": "Mediatek",
+        "soc_model": "Dimensity 9300+",
+        "fingerprint": "samsung/gts10uxx/gts10u:15/AP3A.240905.015.A2/X926BXXU1AXJ1:user/release-keys",
+        "description": "gts10uxx-user 15 AP3A.240905.015.A2 X926BXXU1AXJ1 release-keys",
+        "baseband": "X926BXXU1AXJ1",
+        "bootloader": "X926BXXU1AXJ1",
+    },
+    "pixel_9_pro_fold": {
+        "id": "pixel_9_pro_fold",
+        "display": "Google Pixel 9 Pro Fold (comet - Unfolded Landscape Stealth)",
+        "brand": "google",
+        "manufacturer": "Google",
+        "model": "Pixel 9 Pro Fold",
+        "device": "comet",
+        "product": "comet",
+        "board": "comet",
+        "hardware": "comet",
+        "soc_manufacturer": "Google",
+        "soc_model": "Tensor G4",
+        "fingerprint": "google/comet/comet:16/BP22.250325.006/13344233:user/release-keys",
+        "description": "comet-user 16 BP22.250325.006 13344233 release-keys",
+        "baseband": "g5400c-250311-250325-B-13281994",
+        "bootloader": "comet-15.1-13129455",
+    },
     "pixel_9_pro_xl": {
         "id": "pixel_9_pro_xl",
         "display": "Google Pixel 9 Pro XL (komodo - Retail Smartphone Stealth)",
@@ -115,23 +166,6 @@ PIXEL_PROFILES = {
         "description": "caiman-user 16 BP22.250325.006 13344233 release-keys",
         "baseband": "g5400c-250311-250325-B-13281994",
         "bootloader": "ripcurrent-15.1-13129455",
-    },
-    "pixel_9_pro_fold": {
-        "id": "pixel_9_pro_fold",
-        "display": "Google Pixel 9 Pro Fold (comet - Retail Smartphone Stealth)",
-        "brand": "google",
-        "manufacturer": "Google",
-        "model": "Pixel 9 Pro Fold",
-        "device": "comet",
-        "product": "comet",
-        "board": "comet",
-        "hardware": "comet",
-        "soc_manufacturer": "Google",
-        "soc_model": "Tensor G4",
-        "fingerprint": "google/comet/comet:16/BP22.250325.006/13344233:user/release-keys",
-        "description": "comet-user 16 BP22.250325.006 13344233 release-keys",
-        "baseband": "g5400c-250311-250325-B-13281994",
-        "bootloader": "comet-15.1-13129455",
     },
 }
 
@@ -207,10 +241,11 @@ class ShoXxEngine:
         self.emulator_proc = None
 
         self.selected_android = "16"  # Default to 16 where Play Store ROM is already pre-bundled out of the box
-        self.selected_pixel = "pixel_9_pro_xl"
+        self.selected_pixel = "pixel_tablet"  # Default to Widescreen Landscape Tablet Mode
         self.root_enabled = True
         self.root_method = "MAGISK"
-        self.stealth_enabled = True  # Anti-Emulator Real Smartphone Stealth Mode
+        self.stealth_enabled = True  # Anti-Emulator Real Tablet/Smartphone Stealth Mode
+        self._emu_log_booted = False
 
         self.fullscreen_enabled = True
         self.sidebar_docked = True
@@ -219,7 +254,7 @@ class ShoXxEngine:
         self.cores = 4
         self.gpu_mode = "host"
         self.resolution = (1920, 1080)
-        self.dpi = 320
+        self.dpi = 220  # Landscape Tablet DPI (triggers full Widescreen Tablet UI)
         self.cold_boot = False
 
         self.ensure_directories()
@@ -350,10 +385,10 @@ class ShoXxEngine:
             self.profiles = [
                 {
                     "id": "prof_pixel9xl_a16_play",
-                    "name": "Pixel 9 Pro XL // Android 16 (Play Store + Magisk Stealth)",
+                    "name": "Pixel Tablet Landscape // Android 16 (Play Store + Magisk Stealth)",
                     "avd_name": "ShoXx_Prof_Pixel9XL_A16",
                     "android_ver": "16",
-                    "pixel_model": "pixel_9_pro_xl",
+                    "pixel_model": "pixel_tablet",
                     "root_enabled": True,
                     "root_method": "MAGISK",
                     "stealth_enabled": True,
@@ -366,10 +401,10 @@ class ShoXxEngine:
                 },
                 {
                     "id": "prof_pixel9xl_a17_play",
-                    "name": "Pixel 9 Pro XL // Android 17 (CinnamonBun + KernelSU)",
+                    "name": "Pixel Tablet Landscape // Android 17 (CinnamonBun + KernelSU)",
                     "avd_name": "ShoXx_Prof_Pixel9XL_A17",
                     "android_ver": "17",
-                    "pixel_model": "pixel_9_pro_xl",
+                    "pixel_model": "pixel_tablet",
                     "root_enabled": True,
                     "root_method": "KERNELSU",
                     "stealth_enabled": True,
@@ -382,10 +417,10 @@ class ShoXxEngine:
                 },
                 {
                     "id": "prof_pixelfold_a15_play",
-                    "name": "Pixel 9 Pro Fold // Android 15 (Play Store + APatch)",
+                    "name": "Galaxy Tab S10 Ultra Landscape // Android 15 (Play Store + APatch)",
                     "avd_name": "ShoXx_Prof_PixelFold_A15",
                     "android_ver": "15",
-                    "pixel_model": "pixel_9_pro_fold",
+                    "pixel_model": "galaxy_tab_s10_ultra",
                     "root_enabled": True,
                     "root_method": "APATCH_SU",
                     "stealth_enabled": True,
@@ -399,6 +434,16 @@ class ShoXxEngine:
             ]
             self.active_profile_id = self.profiles[0]["id"]
             self.save_profiles()
+        else:
+            # Automatically upgrade legacy phone default profiles to Landscape Tablet mode
+            migrated = False
+            for p in self.profiles:
+                if p.get("id") in ("prof_pixel9xl_a16_play", "prof_pixel9xl_a17_play") and p.get("pixel_model") == "pixel_9_pro_xl":
+                    p["pixel_model"] = "pixel_tablet"
+                    p["name"] = p["name"].replace("Pixel 9 Pro XL", "Pixel Tablet Landscape")
+                    migrated = True
+            if migrated:
+                self.save_profiles()
 
         self.select_profile(self.active_profile_id or self.profiles[0]["id"])
 
@@ -1344,9 +1389,9 @@ class ShoXxEngine:
         rec_gpu_mode = "host" if has_dedicated_gpu else "auto"
         rec_gpu_desc = f"host (Hardware OpenGL/Gfxstream via {primary_gpu['name']})" if has_dedicated_gpu else "auto (Integrated Renderer)"
 
-        rec_res = (screen_w - SIDEBAR_WIDTH, screen_h)
-        rec_res_label = f"PC Fullscreen + Gaming Sidebar ({screen_w}x{screen_h})"
-        rec_dpi = 320 if screen_w <= 1920 else 420
+        rec_res = (max(screen_w - SIDEBAR_WIDTH, screen_h), min(screen_w - SIDEBAR_WIDTH, screen_h))
+        rec_res_label = f"Landscape Tablet + Gaming Sidebar ({rec_res[0]}x{rec_res[1]})"
+        rec_dpi = 220
 
         cpu_score = min(30, int((cpu_threads / 4) * 18 + (cpu_mhz / 3400) * 12))
         ram_score = min(25, int((ram_total_mb / 16384) * 25))
@@ -1355,9 +1400,9 @@ class ShoXxEngine:
         total_score = min(100, cpu_score + ram_score + gpu_score + accel_score)
 
         if total_score >= 88:
-            tier_name = "CYBER ULTRA // HIGH-FPS PIXEL STEALTH + GAMING EXTEND"
+            tier_name = "CYBER ULTRA // HIGH-FPS PIXEL TABLET STEALTH + GAMING EXTEND"
         elif total_score >= 70:
-            tier_name = "NEON TURBO // OPTIMAL PIXEL & ROOT WORKSTATION"
+            tier_name = "NEON TURBO // OPTIMAL PIXEL TABLET & ROOT WORKSTATION"
         else:
             tier_name = "BALANCED CORE // STABLE EMULATION PROFILE"
 
@@ -1371,13 +1416,13 @@ class ShoXxEngine:
             "resolution": rec_res,
             "resolution_label": rec_res_label,
             "dpi": rec_dpi,
-            "pixel_profile": "pixel_9_pro_xl",
+            "pixel_profile": "pixel_tablet",
             "fullscreen": True,
             "root_enabled": True,
             "score": total_score,
             "tier": tier_name,
             "summary": (
-                f"PIXEL 9 PRO XL STEALTH ({screen_w}x{screen_h})  •  {rec_cores} Cores  •  {rec_ram_mb} MB RAM  •  "
+                f"PIXEL TABLET LANDSCAPE ({rec_res[0]}x{rec_res[1]})  •  {rec_cores} Cores  •  {rec_ram_mb} MB RAM  •  "
                 f"GPU '{rec_gpu_mode}' ({primary_gpu['name']})"
             )
         }
@@ -1652,14 +1697,17 @@ class ShoXxEngine:
                 f"target=android-{api_level}\n"
             )
 
-        # Docked Fullscreen Width leaves SIDEBAR_WIDTH on the right for the Gaming Extend Panel
+        # Docked Landscape Tablet Dimensions (always W > H for true Tablet Landscape Mode)
         sw = ctypes.windll.user32.GetSystemMetrics(0) if os.name == "nt" else 1920
         sh = ctypes.windll.user32.GetSystemMetrics(1) if os.name == "nt" else 1080
-        w = max(800, sw - SIDEBAR_WIDTH) if self.sidebar_docked else self.resolution[0]
-        h = sh if self.sidebar_docked else self.resolution[1]
+        raw_w = max(1280, sw - SIDEBAR_WIDTH) if self.sidebar_docked else self.resolution[0]
+        raw_h = max(720, sh) if self.sidebar_docked else self.resolution[1]
+        w = max(raw_w, raw_h)
+        h = min(raw_w, raw_h)
+        tablet_dpi = 220  # Forces Android smallestScreenWidthDp >= 600dp (Widescreen Tablet UI)
 
         pix_key = prof.get("pixel_model", self.selected_pixel)
-        pix = PIXEL_PROFILES.get(pix_key, PIXEL_PROFILES["pixel_9_pro_xl"])
+        pix = PIXEL_PROFILES.get(pix_key, PIXEL_PROFILES["pixel_tablet"])
 
         config_lines = [
             "PlayStore.enabled = yes",
@@ -1693,12 +1741,12 @@ class ShoXxEngine:
             f"hw.gpu.mode = {prof.get('gpu_mode', self.gpu_mode)}",
             "hw.gsmModem = yes",
             "hw.gyroscope = yes",
-            "hw.initialOrientation = landscape" if w >= h else "hw.initialOrientation = portrait",
+            "hw.initialOrientation = landscape",
             "hw.keyboard = yes",
             "hw.keyboard.lid = yes",
             "hw.lcd.backlight = yes",
             "hw.lcd.circular = false",
-            f"hw.lcd.density = {self.dpi}",
+            f"hw.lcd.density = {tablet_dpi}",
             "hw.lcd.depth = 16",
             f"hw.lcd.height = {h}",
             f"hw.lcd.width = {w}",
@@ -1706,6 +1754,7 @@ class ShoXxEngine:
             "hw.mainKeys = no",
             f"hw.ramSize = {prof.get('ram_mb', self.ram_mb)}",
             "hw.sdCard = yes",
+            "hw.sensor.hinge.count = 0",
             "hw.sensors.gyroscope_uncalibrated = yes",
             "hw.sensors.humidity = yes",
             "hw.sensors.light = yes",
@@ -1722,6 +1771,8 @@ class ShoXxEngine:
             "runtime.network.speed = full",
             "sdcard.size = 2048M",
             "showDeviceFrame = no",
+            f"skin.name = {w}x{h}",
+            "skin.path = _no_skin",
             f"tag.display = {rom_st['tag_display']}",
             f"tag.displaynames = {rom_st['tag_display']}",
             f"tag.id = {rom_st['tag_id']}",
@@ -1733,6 +1784,14 @@ class ShoXxEngine:
         config_path = os.path.join(avd_dir, "config.ini")
         with open(config_path, "w", encoding="utf-8") as f:
             f.write("\n".join(config_lines) + "\n")
+
+        # Remove cached hardware-qemu.ini so QEMU picks up the new Landscape Tablet dimensions immediately
+        hw_qemu = os.path.join(avd_dir, "hardware-qemu.ini")
+        if os.path.exists(hw_qemu):
+            try:
+                os.remove(hw_qemu)
+            except Exception:
+                pass
 
         emu_user_ini = os.path.join(avd_dir, "emulator-user.ini")
         with open(emu_user_ini, "w", encoding="utf-8") as f:
@@ -1800,15 +1859,18 @@ class ShoXxEngine:
         # Clear any stale lock files/processes holding the AVD
         self.clear_avd_locks(avd_name=prof["avd_name"], kill_orphans=True)
 
+        self._emu_log_booted = False
         self.create_or_update_avd(android_ver=self.selected_android, avd_name=prof["avd_name"], profile=prof)
         avd_data_dir = os.path.join(AVD_HOME, f"{prof['avd_name']}.avd")
 
         sw = ctypes.windll.user32.GetSystemMetrics(0) if os.name == "nt" else 1920
         sh = ctypes.windll.user32.GetSystemMetrics(1) if os.name == "nt" else 1080
-        skin_w = max(800, sw - self.current_sidebar_width) if self.sidebar_docked else self.resolution[0]
-        skin_h = sh if self.sidebar_docked else self.resolution[1]
+        raw_w = max(1280, sw - self.current_sidebar_width) if self.sidebar_docked else self.resolution[0]
+        raw_h = max(720, sh) if self.sidebar_docked else self.resolution[1]
+        skin_w = max(raw_w, raw_h)
+        skin_h = min(raw_w, raw_h)
 
-        pix = PIXEL_PROFILES.get(self.selected_pixel, PIXEL_PROFILES["pixel_9_pro_xl"])
+        pix = PIXEL_PROFILES.get(self.selected_pixel, PIXEL_PROFILES["pixel_tablet"])
 
         cmd = [
             self.emulator_exe,
@@ -1818,6 +1880,8 @@ class ShoXxEngine:
             "-memory", str(self.ram_mb),
             "-cores", str(self.cores),
             "-skin", f"{skin_w}x{skin_h}",
+            "-ports", "5554,5555",
+            "-no-metrics",
             "-skip-adb-auth",
             "-writable-system",  # Needed for Stealth build.prop/resetprop & Root switching
         ]
@@ -1829,7 +1893,7 @@ class ShoXxEngine:
             cmd.extend(["-selinux", "permissive"])
             self.log(f"ROOT MODE ARMED [{self.root_method}]: Launching with writable system & SELinux permissive.", "ROOT")
 
-        self.log(f"Launching Profile '{prof['name']}' ({pix['model']} | Android {self.selected_android})...", "CYBER")
+        self.log(f"Launching Landscape Tablet Profile '{prof['name']}' ({pix['model']} {skin_w}x{skin_h} | Android {self.selected_android})...", "CYBER")
         env = self.get_env()
 
         try:
@@ -1858,6 +1922,8 @@ class ShoXxEngine:
         for line in iter(proc.stdout.readline, ""):
             line_s = line.strip()
             if line_s:
+                if "Boot completed in" in line_s or "Increasing screen off timeout" in line_s:
+                    self._emu_log_booted = True
                 lvl = "ERROR" if "ERROR" in line_s.upper() else ("WARN" if "WARN" in line_s.upper() else "INFO")
                 self.log(f"[EMU] {line_s}", lvl)
         self.log("Emulator process exited.", "WARN")
@@ -1867,38 +1933,49 @@ class ShoXxEngine:
         cflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 
         if self.fullscreen_enabled:
-            for _ in range(45):
+            for _ in range(60):
                 if not self.is_emulator_running():
                     return
-                if self.maximize_emulator_window(fullscreen_borderless=True, leave_sidebar=self.sidebar_docked):
-                    self.log("✔ PC FULLSCREEN + GAMING EXTEND SIDEBAR DOCKED!", "SUCCESS")
+                if self.maximize_emulator_window(fullscreen_borderless=False, leave_sidebar=self.sidebar_docked):
+                    self.log("✔ EMULATOR WINDOW FRAMED (MIN/MAX/RESIZE) & DOCKED NEXT TO SIDEBAR!", "SUCCESS")
                     break
                 time.sleep(1.0)
 
-        self.log(f"Waiting for Android {self.selected_android} ({PIXEL_PROFILES[self.selected_pixel]['model']}) Boot & ADB bridge...", "CYBER")
+        pix = PIXEL_PROFILES.get(self.selected_pixel, PIXEL_PROFILES["pixel_tablet"])
+        self.log(f"Waiting for Android {self.selected_android} ({pix['model']} Landscape Tablet) Boot & ADB bridge...", "CYBER")
         booted = False
-        for _ in range(120):
+        for tick in range(200):
             if not self.is_emulator_running():
                 return
             try:
+                if tick % 4 == 0:
+                    subprocess.run(
+                        [self.adb_exe, "connect", "127.0.0.1:5555"],
+                        env=env, capture_output=True, text=True, timeout=3, creationflags=cflags
+                    )
                 res = subprocess.run(
                     [self.adb_exe, "shell", "getprop", "sys.boot_completed"],
                     env=env, capture_output=True, text=True, timeout=4, creationflags=cflags
                 )
-                if res.stdout.strip() == "1":
+                if res.stdout.strip() == "1" or self._emu_log_booted:
                     booted = True
                     break
             except Exception:
-                pass
+                if self._emu_log_booted:
+                    booted = True
+                    break
             time.sleep(1.5)
 
         if booted:
-            pix = PIXEL_PROFILES.get(self.selected_pixel, PIXEL_PROFILES["pixel_9_pro_xl"])
-            self.log(f"⚡ ANDROID {self.selected_android} ON {pix['model'].upper()} BOOT COMPLETE!", "SUCCESS")
+            subprocess.run([self.adb_exe, "connect", "127.0.0.1:5555"], env=env, capture_output=True, text=True, timeout=4, creationflags=cflags)
+            self.log(f"⚡ ANDROID {self.selected_android} ON {pix['model'].upper()} (LANDSCAPE TABLET) BOOT COMPLETE!", "SUCCESS")
             if self.fullscreen_enabled:
-                self.maximize_emulator_window(fullscreen_borderless=True, leave_sidebar=self.sidebar_docked)
+                self.maximize_emulator_window(fullscreen_borderless=False, leave_sidebar=self.sidebar_docked)
 
-            # 1. Apply Real Smartphone Anti-Emulator Stealth Identity
+            # 0. Enforce Widescreen Landscape Tablet Mode & Tablet Density
+            self.force_landscape_tablet_mode()
+
+            # 1. Apply Real Tablet/Smartphone Anti-Emulator Stealth Identity
             self.apply_live_stealth_smartphone_identity()
 
             # 2. Apply Root State (Magisk / KernelSU / APatch or Unroot if Root Switch is OFF)
@@ -1911,6 +1988,22 @@ class ShoXxEngine:
                 on_boot_complete()
         else:
             self.log("Boot timeout reached while waiting for sys.boot_completed.", "WARN")
+
+    def force_landscape_tablet_mode(self):
+        """Enforces Widescreen Landscape Tablet Orientation and Tablet DPI (220) on the running Android instance."""
+        def _worker():
+            env = self.get_env()
+            cflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            subprocess.run([self.adb_exe, "connect", "127.0.0.1:5555"], env=env, capture_output=True, timeout=3, creationflags=cflags)
+            cmd_str = (
+                "wm density 220; "
+                "settings put system accelerometer_rotation 0; "
+                "settings put system user_rotation 0; "
+                "cmd window set-ignore-orientation-request true 2>/dev/null || true"
+            )
+            subprocess.run([self.adb_exe, "shell", cmd_str], env=env, capture_output=True, timeout=6, creationflags=cflags)
+            self.log("✔ Landscape Tablet Display Mode (220 DPI Widescreen) enforced.", "SUCCESS")
+        threading.Thread(target=_worker, daemon=True).start()
 
     def apply_live_root_state(self, enable_root: bool, method: str = None) -> bool:
         self.root_enabled = enable_root
@@ -2019,20 +2112,16 @@ class ShoXxEngine:
             pass
         return info
 
-    def maximize_emulator_window(self, fullscreen_borderless: bool = True, leave_sidebar: bool = True, sidebar_width: int = None) -> bool:
+    def _find_emulator_hwnds(self) -> list:
         """
-        Positions the Android Emulator window into Borderless Fullscreen on the PC:
-        - If `leave_sidebar=True`, occupies `(0, 0)` to `(ScreenW - active_sidebar_w, ScreenH)` so the fixed
-          or collapsed right-hand GAMING EXTEND sidebar panel sits flush on the right side of the monitor!
+        Finds the top-level window handle(s) of the running Android Emulator (excluding the ShoXx_Emu Studio GUI itself).
         """
         if os.name != "nt":
-            return False
+            return []
         try:
             from ctypes import wintypes
-
             user32 = ctypes.windll.user32
             WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-
             found_hwnds = []
 
             def enum_cb(hwnd, lparam):
@@ -2042,11 +2131,28 @@ class ShoXxEngine:
                         buf = ctypes.create_unicode_buffer(length + 1)
                         user32.GetWindowTextW(hwnd, buf, length + 1)
                         title = buf.value
-                        if "Android Emulator" in title or "ShoXx_" in title or "qemu-system" in title.lower():
+                        if "ShoXx_Emu Studio" in title or "Profile & ROM Manager" in title:
+                            return True
+                        if "Android Emulator" in title or "qemu-system" in title.lower():
                             found_hwnds.append(hwnd)
                 return True
 
             user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
+            return found_hwnds
+        except Exception:
+            return []
+
+    def maximize_emulator_window(self, fullscreen_borderless: bool = False, leave_sidebar: bool = True, sidebar_width: int = None) -> bool:
+        """
+        Positions the Android Emulator window with a full Windows Frame (`WS_OVERLAPPEDWINDOW` — Titlebar,
+        Minimize `─`, Maximize `□`, Close `✕`, Resizable Border) docked cleanly on the left of the
+        `GAMING EXTEND` sidebar panel!
+        """
+        if os.name != "nt":
+            return False
+        try:
+            user32 = ctypes.windll.user32
+            found_hwnds = self._find_emulator_hwnds()
             if not found_hwnds:
                 return False
 
@@ -2056,21 +2162,63 @@ class ShoXxEngine:
             target_w = (screen_w - active_sb_w) if leave_sidebar else screen_w
 
             GWL_STYLE = -16
+            WS_OVERLAPPEDWINDOW = 0x00CF0000  # Includes Titlebar, MinimizeBox, MaximizeBox, ThickFrame Resizable Border
             WS_POPUP = 0x80000000
             WS_VISIBLE = 0x10000000
-            SW_SHOWMAXIMIZED = 3
+            SW_RESTORE = 9
             SWP_FRAMECHANGED = 0x0020
             SWP_SHOWWINDOW = 0x0040
 
             for hwnd in found_hwnds:
+                user32.ShowWindow(hwnd, SW_RESTORE)
                 if fullscreen_borderless:
                     user32.SetWindowLongW(hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE)
-                    user32.SetWindowPos(hwnd, 0, 0, 0, target_w, screen_h, SWP_FRAMECHANGED | SWP_SHOWWINDOW)
                 else:
-                    user32.ShowWindow(hwnd, SW_SHOWMAXIMIZED)
+                    user32.SetWindowLongW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE)
+                user32.SetWindowPos(hwnd, 0, 0, 0, target_w, screen_h, SWP_FRAMECHANGED | SWP_SHOWWINDOW)
                 user32.SetForegroundWindow(hwnd)
             return True
         except Exception:
+            return False
+
+    def control_emulator_window(self, action: str) -> bool:
+        """
+        Controls the running Emulator Window Frame:
+        - `action='minimize'`: Minimizes the Emulator window to the Windows taskbar (`SW_MINIMIZE`)
+        - `action='maximize'`: Maximizes the Emulator window (`SW_SHOWMAXIMIZED`)
+        - `action='restore_dock'`: Restores and docks the Emulator window with full frame next to the sidebar
+        """
+        if os.name != "nt":
+            return False
+        try:
+            user32 = ctypes.windll.user32
+            found_hwnds = self._find_emulator_hwnds()
+            if not found_hwnds:
+                self.log("No active Android Emulator window found yet.", "WARN")
+                return False
+
+            SW_MINIMIZE = 6
+            SW_SHOWMAXIMIZED = 3
+            SW_RESTORE = 9
+            GWL_STYLE = -16
+            WS_OVERLAPPEDWINDOW = 0x00CF0000
+            WS_VISIBLE = 0x10000000
+
+            for hwnd in found_hwnds:
+                user32.SetWindowLongW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE)
+                if action == "minimize":
+                    user32.ShowWindow(hwnd, SW_MINIMIZE)
+                    self.log("Emulator window minimized to taskbar.", "INFO")
+                elif action == "maximize":
+                    user32.ShowWindow(hwnd, SW_SHOWMAXIMIZED)
+                    user32.SetForegroundWindow(hwnd)
+                    self.log("Emulator window maximized with window frame.", "SUCCESS")
+                else:
+                    self.maximize_emulator_window(fullscreen_borderless=False, leave_sidebar=True)
+                    self.log("Emulator window restored & docked next to Gaming Extend sidebar.", "SUCCESS")
+            return True
+        except Exception as e:
+            self.log(f"Window control error: {e}", "WARN")
             return False
 
     def open_root_shell_terminal(self):
