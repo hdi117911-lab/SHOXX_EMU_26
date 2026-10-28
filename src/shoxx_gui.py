@@ -648,6 +648,8 @@ class ShoXxApp(tk.Tk):
             log_callback=self.append_log_threadsafe,
             progress_callback=self.update_progress_threadsafe
         )
+        self.showing_emulator_frame = False
+        self.engine.on_window_embedded_cb = lambda: self.after(0, self.show_emulator_viewport_frame)
         self.sys_report = self.engine.analyze_system_hardware()
         self.plugins_list = self.engine.inspect_plugins_and_tools()
 
@@ -730,6 +732,15 @@ class ShoXxApp(tk.Tk):
         nav_btns = tk.Frame(top_bar, bg=BG_SURFACE)
         nav_btns.pack(side="right", pady=14)
 
+        self.btn_toggle_view = tk.Button(
+            nav_btns, text="⊞ Emulator Frame", command=self.toggle_studio_viewport_mode,
+            font=(FONT_UI, 9, "bold"), bg=BG_CARD, fg=STATUS_OK,
+            activebackground=ACCENT_PRIMARY, activeforeground=TEXT_PRIMARY,
+            highlightthickness=1, highlightbackground=BORDER_SUBTLE,
+            relief="flat", padx=12, pady=5, cursor="hand2"
+        )
+        self.btn_toggle_view.pack(side="left", padx=4)
+
         tk.Button(
             nav_btns, text="Profiles & ROMs", command=self.open_profile_manager_modal,
             font=(FONT_UI, 9, "bold"), bg=BG_CARD, fg=TEXT_PRIMARY,
@@ -772,8 +783,91 @@ class ShoXxApp(tk.Tk):
 
         tk.Frame(main_work, bg=BORDER_SUBTLE, height=1).pack(fill="x")
 
-        # Main 2-Column Content Area
+        # Subtle Bottom Progress & Status Footer (Packed before central workspace so it stays anchored at bottom)
+        self.footer_canvas = tk.Canvas(main_work, height=38, bg=BG_SURFACE, highlightthickness=0)
+        self.footer_canvas.pack(fill="x", side="bottom")
+
+        # ==================== EMBEDDED STUDIO EMULATOR CONTAINER FRAME ====================
+        self.emulator_viewport_frame = tk.Frame(
+            main_work, bg=BG_SURFACE,
+            highlightbackground=BORDER_FOCUS, highlightthickness=2
+        )
+
+        emu_hdr = tk.Frame(self.emulator_viewport_frame, bg=BG_CARD, height=38, padx=12)
+        emu_hdr.pack(fill="x", side="top")
+        emu_hdr.pack_propagate(False)
+
+        self.emu_frame_title_lbl = tk.Label(
+            emu_hdr,
+            text="●  ANDROID EMULATOR STUDIO FRAME — Google Pixel Tablet (Landscape 16:9)",
+            font=(FONT_UI, 9, "bold"), fg=STATUS_OK, bg=BG_CARD
+        )
+        self.emu_frame_title_lbl.pack(side="left", pady=8)
+
+        emu_f_btns = tk.Frame(emu_hdr, bg=BG_CARD)
+        emu_f_btns.pack(side="right", pady=5)
+
+        tk.Button(
+            emu_f_btns, text="⊞ Studio Dashboard",
+            command=self.show_studio_dashboard,
+            font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=TEXT_PRIMARY,
+            activebackground=ACCENT_PRIMARY, relief="flat", padx=10, pady=3, cursor="hand2"
+        ).pack(side="left", padx=3)
+
+        tk.Button(
+            emu_f_btns, text="↻ 16:9 Landscape",
+            command=self.engine.force_landscape_tablet_mode,
+            font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=STATUS_OK,
+            relief="flat", padx=8, pady=3, cursor="hand2"
+        ).pack(side="left", padx=3)
+
+        self.btn_undock_embed = tk.Button(
+            emu_f_btns, text="❐ Undock Window",
+            command=self.toggle_embed_or_undock,
+            font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=ACCENT_PRIMARY,
+            relief="flat", padx=10, pady=3, cursor="hand2"
+        )
+        self.btn_undock_embed.pack(side="left", padx=3)
+
+        tk.Button(
+            emu_f_btns, text="─ Minimize",
+            command=self._minimize_emulator_or_studio,
+            font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=TEXT_PRIMARY,
+            relief="flat", padx=10, pady=3, cursor="hand2"
+        ).pack(side="left", padx=3)
+
+        tk.Button(
+            emu_f_btns, text="□ Max Width (F10)",
+            command=self.toggle_sidebar_collapse,
+            font=(FONT_UI, 8, "bold"), bg=BG_SURFACE, fg=TEXT_PRIMARY,
+            relief="flat", padx=10, pady=3, cursor="hand2"
+        ).pack(side="left", padx=3)
+
+        tk.Button(
+            emu_f_btns, text="✕ Stop",
+            command=self._stop_and_return_to_dashboard,
+            font=(FONT_UI, 8, "bold"), bg="#261216", fg=STATUS_ERR,
+            activebackground=STATUS_ERR, activeforeground=TEXT_PRIMARY,
+            relief="flat", padx=10, pady=3, cursor="hand2"
+        ).pack(side="left", padx=(3, 0))
+
+        tk.Frame(self.emulator_viewport_frame, bg=BORDER_SUBTLE, height=1).pack(fill="x")
+
+        self.emu_host_container = tk.Frame(self.emulator_viewport_frame, bg="#05070B")
+        self.emu_host_container.pack(fill="both", expand=True)
+        self.emu_host_container.bind("<Configure>", self._on_emu_container_resized)
+
+        self.emu_placeholder_lbl = tk.Label(
+            self.emu_host_container,
+            text="Launching & Embedding Google Pixel Tablet (Landscape 16:9) inside Studio Frame...\n"
+                 "Use the frame header bar above to [─ Minimize], [□ Max Width], [❐ Undock], or return to [⊞ Studio Dashboard].",
+            font=(FONT_UI, 10), fg=TEXT_SECONDARY, bg="#05070B", justify="center"
+        )
+        self.emu_placeholder_lbl.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Main 2-Column Content Area (Studio Dashboard)
         body = tk.Frame(main_work, bg=BG_ROOT)
+        self.dashboard_body = body
         body.pack(fill="both", expand=True, padx=20, pady=16)
         body.grid_columnconfigure(0, weight=5, uniform="mcol")
         body.grid_columnconfigure(1, weight=5, uniform="mcol")
@@ -989,10 +1083,6 @@ class ShoXxApp(tk.Tk):
         self.log_text.tag_config("ROOT", foreground=TEXT_PRIMARY)
         self.log_text.tag_config("WARN", foreground=STATUS_WARN)
         self.log_text.tag_config("ERROR", foreground=STATUS_ERR)
-
-        # Subtle Bottom Progress & Status Footer
-        self.footer_canvas = tk.Canvas(main_work, height=38, bg=BG_SURFACE, highlightthickness=0)
-        self.footer_canvas.pack(fill="x", side="bottom")
 
         self._update_launch_button_caption()
 
@@ -1599,11 +1689,74 @@ class ShoXxApp(tk.Tk):
 
         threading.Thread(target=_worker, daemon=True).start()
 
+    def show_emulator_viewport_frame(self):
+        """Switches the main left workspace to the Embedded Studio Emulator Container Frame."""
+        if not self.showing_emulator_frame:
+            self.dashboard_body.pack_forget()
+            self.emulator_viewport_frame.pack(fill="both", expand=True, padx=14, pady=10)
+            self.showing_emulator_frame = True
+        self.btn_toggle_view.config(text="⊞ Studio Dashboard", fg=ACCENT_PRIMARY)
+        pix_m = PIXEL_PROFILES[self.engine.selected_pixel]["model"]
+        r_tag = ROOT_METHODS[self.engine.root_method]["short"] if self.engine.root_enabled else "Unrooted"
+        self.emu_frame_title_lbl.config(
+            text=f"●  ANDROID EMULATOR STUDIO FRAME — {pix_m} (Landscape 16:9 • Android {self.engine.selected_android} • {r_tag})"
+        )
+        self.update_idletasks()
+        cw = max(640, self.emu_host_container.winfo_width())
+        ch = max(400, self.emu_host_container.winfo_height())
+        self.engine.embed_container_hwnd = self.emu_host_container.winfo_id()
+        self.engine.embed_container_size = (cw, ch)
+        if self.engine.is_emulator_running() and self.engine.embed_mode_enabled:
+            self.engine.embed_emulator_in_container(self.engine.embed_container_hwnd, cw, ch)
+
+    def show_studio_dashboard(self):
+        """Switches the main left workspace back to the 2-Column Studio Configuration & Telemetry Dashboard."""
+        if self.showing_emulator_frame:
+            self.emulator_viewport_frame.pack_forget()
+            self.dashboard_body.pack(fill="both", expand=True, padx=20, pady=16)
+            self.showing_emulator_frame = False
+        self.btn_toggle_view.config(text="⊞ Emulator Frame", fg=STATUS_OK)
+
+    def toggle_studio_viewport_mode(self):
+        if self.showing_emulator_frame:
+            self.show_studio_dashboard()
+        else:
+            self.show_emulator_viewport_frame()
+
+    def toggle_embed_or_undock(self):
+        """Toggles between embedding the Emulator inside the Studio Frame (`SetParent`) and a Floating Framed Window."""
+        if self.engine.embed_mode_enabled:
+            self.engine.undock_emulator_window()
+            self.btn_undock_embed.config(text="⊞ Embed in Frame", fg=STATUS_OK)
+        else:
+            self.engine.embed_mode_enabled = True
+            self.show_emulator_viewport_frame()
+            self.btn_undock_embed.config(text="❐ Undock Window", fg=ACCENT_PRIMARY)
+
+    def _minimize_emulator_or_studio(self):
+        if not self.engine.embed_mode_enabled and self.engine.is_emulator_running():
+            self.engine.control_emulator_window("minimize")
+        else:
+            self.iconify()
+
+    def _stop_and_return_to_dashboard(self):
+        self.engine.stop_emulator()
+        self.show_studio_dashboard()
+
+    def _on_emu_container_resized(self, event=None):
+        cw = max(640, self.emu_host_container.winfo_width())
+        ch = max(400, self.emu_host_container.winfo_height())
+        self.engine.embed_container_hwnd = self.emu_host_container.winfo_id()
+        self.engine.embed_container_size = (cw, ch)
+        if self.engine.is_emulator_running() and self.engine.embed_mode_enabled:
+            self.engine.embed_emulator_in_container(self.engine.embed_container_hwnd, cw, ch)
+
     def start_emulator_launch(self):
         self._on_hw_changed()
+        self.show_emulator_viewport_frame()
         self.progress_pct = 35
         pix_m = PIXEL_PROFILES[self.engine.selected_pixel]["model"]
-        self.progress_status = f"Launching {pix_m} (Android {self.engine.selected_android}) in Docked Fullscreen Mode..."
+        self.progress_status = f"Launching {pix_m} (Android {self.engine.selected_android}) inside Embedded Studio Frame..."
         threading.Thread(
             target=self.engine.launch_emulator,
             args=(self._on_emulator_booted,),

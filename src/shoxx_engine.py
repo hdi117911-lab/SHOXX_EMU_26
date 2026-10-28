@@ -250,6 +250,11 @@ class ShoXxEngine:
         self.fullscreen_enabled = True
         self.sidebar_docked = True
         self.sidebar_collapsed = False
+        self.embed_mode_enabled = True
+        self.embed_container_hwnd = None
+        self.embed_container_size = (1540, 940)
+        self._cached_emulator_hwnds = []
+        self.on_window_embedded_cb = None
         self.ram_mb = 6144
         self.cores = 4
         self.gpu_mode = "host"
@@ -1936,7 +1941,14 @@ class ShoXxEngine:
             for _ in range(60):
                 if not self.is_emulator_running():
                     return
-                if self.maximize_emulator_window(fullscreen_borderless=False, leave_sidebar=self.sidebar_docked):
+                if self.embed_mode_enabled and self.embed_container_hwnd:
+                    cw, ch = self.embed_container_size
+                    if self.embed_emulator_in_container(self.embed_container_hwnd, cw, ch):
+                        self.log("✔ EMULATOR EMBEDDED IN STUDIO CONTAINER FRAME (MIN/MAX/UNDOCK READY)!", "SUCCESS")
+                        if self.on_window_embedded_cb:
+                            self.on_window_embedded_cb()
+                        break
+                elif self.maximize_emulator_window(fullscreen_borderless=False, leave_sidebar=self.sidebar_docked):
                     self.log("✔ EMULATOR WINDOW FRAMED (MIN/MAX/RESIZE) & DOCKED NEXT TO SIDEBAR!", "SUCCESS")
                     break
                 time.sleep(1.0)
@@ -1970,7 +1982,13 @@ class ShoXxEngine:
             subprocess.run([self.adb_exe, "connect", "127.0.0.1:5555"], env=env, capture_output=True, text=True, timeout=4, creationflags=cflags)
             self.log(f"⚡ ANDROID {self.selected_android} ON {pix['model'].upper()} (LANDSCAPE TABLET) BOOT COMPLETE!", "SUCCESS")
             if self.fullscreen_enabled:
-                self.maximize_emulator_window(fullscreen_borderless=False, leave_sidebar=self.sidebar_docked)
+                if self.embed_mode_enabled and self.embed_container_hwnd:
+                    cw, ch = self.embed_container_size
+                    self.embed_emulator_in_container(self.embed_container_hwnd, cw, ch)
+                    if self.on_window_embedded_cb:
+                        self.on_window_embedded_cb()
+                else:
+                    self.maximize_emulator_window(fullscreen_borderless=False, leave_sidebar=self.sidebar_docked)
 
             # 0. Enforce Widescreen Landscape Tablet Mode & Tablet Density
             self.force_landscape_tablet_mode()
@@ -2114,7 +2132,8 @@ class ShoXxEngine:
 
     def _find_emulator_hwnds(self) -> list:
         """
-        Finds the top-level window handle(s) of the running Android Emulator (excluding the ShoXx_Emu Studio GUI itself).
+        Finds the window handle(s) of the running Android Emulator (both top-level and embedded child windows),
+        strictly excluding the ShoXx_Emu Studio GUI itself.
         """
         if os.name != "nt":
             return []
@@ -2122,7 +2141,9 @@ class ShoXxEngine:
             from ctypes import wintypes
             user32 = ctypes.windll.user32
             WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-            found_hwnds = []
+
+            valid_cached = [h for h in self._cached_emulator_hwnds if user32.IsWindow(h)]
+            found_hwnds = list(valid_cached)
 
             def enum_cb(hwnd, lparam):
                 if user32.IsWindowVisible(hwnd):
@@ -2134,22 +2155,101 @@ class ShoXxEngine:
                         if "ShoXx_Emu Studio" in title or "Profile & ROM Manager" in title:
                             return True
                         if "Android Emulator" in title or "qemu-system" in title.lower():
-                            found_hwnds.append(hwnd)
+                            if hwnd not in found_hwnds:
+                                found_hwnds.append(hwnd)
                 return True
 
             user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
+            self._cached_emulator_hwnds = found_hwnds
             return found_hwnds
         except Exception:
             return []
 
-    def maximize_emulator_window(self, fullscreen_borderless: bool = False, leave_sidebar: bool = True, sidebar_width: int = None) -> bool:
+    def embed_emulator_in_container(self, container_hwnd: int, width: int, height: int) -> bool:
         """
-        Positions the Android Emulator window with a full Windows Frame (`WS_OVERLAPPEDWINDOW` — Titlebar,
-        Minimize `─`, Maximize `□`, Close `✕`, Resizable Border) docked cleanly on the left of the
-        `GAMING EXTEND` sidebar panel!
+        Embeds the running Android Emulator window directly inside the Studio Container Frame (`SetParent`),
+        turning the Studio Frame's custom header bar (`[ ─ Minimize ] [ □ Maximize ] [ ❐ Undock ]`) into the
+        emulator's dedicated window frame!
+        """
+        if os.name != "nt" or not container_hwnd:
+            return False
+        try:
+            user32 = ctypes.windll.user32
+            found_hwnds = self._find_emulator_hwnds()
+            if not found_hwnds:
+                return False
+
+            GWL_STYLE = -16
+            WS_CHILD = 0x40000000
+            WS_VISIBLE = 0x10000000
+            WS_CLIPSIBLINGS = 0x04000000
+            WS_CLIPCHILDREN = 0x02000000
+            SW_RESTORE = 9
+            SWP_FRAMECHANGED = 0x0020
+            SWP_SHOWWINDOW = 0x0040
+            SWP_NOZORDER = 0x0004
+
+            cw = max(640, int(width))
+            ch = max(400, int(height))
+            self.embed_container_hwnd = container_hwnd
+            self.embed_container_size = (cw, ch)
+            self.embed_mode_enabled = True
+
+            for hwnd in found_hwnds:
+                user32.ShowWindow(hwnd, SW_RESTORE)
+                user32.SetParent(hwnd, container_hwnd)
+                user32.SetWindowLongW(hwnd, GWL_STYLE, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN)
+                user32.MoveWindow(hwnd, 0, 0, cw, ch, True)
+                user32.SetWindowPos(hwnd, 0, 0, 0, cw, ch, SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOZORDER)
+            return True
+        except Exception:
+            return False
+
+    def undock_emulator_window(self) -> bool:
+        """
+        Detaches the embedded Android Emulator window from the Studio Container Frame (`SetParent(hwnd, 0)`)
+        and gives it a full native Windows Frame (`WS_OVERLAPPEDWINDOW` with Titlebar, Minimize, Maximize, Resize).
         """
         if os.name != "nt":
             return False
+        try:
+            user32 = ctypes.windll.user32
+            found_hwnds = self._find_emulator_hwnds()
+            if not found_hwnds:
+                return False
+
+            self.embed_mode_enabled = False
+            GWL_STYLE = -16
+            WS_OVERLAPPEDWINDOW = 0x00CF0000
+            WS_VISIBLE = 0x10000000
+            SWP_FRAMECHANGED = 0x0020
+            SWP_SHOWWINDOW = 0x0040
+
+            screen_w = user32.GetSystemMetrics(0)
+            screen_h = user32.GetSystemMetrics(1)
+            target_w = max(900, screen_w - self.current_sidebar_width)
+            target_h = max(600, screen_h - 64)
+
+            for hwnd in found_hwnds:
+                user32.SetParent(hwnd, 0)
+                user32.SetWindowLongW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE)
+                user32.SetWindowPos(hwnd, 0, 0, 64, target_w, target_h, SWP_FRAMECHANGED | SWP_SHOWWINDOW)
+                user32.SetForegroundWindow(hwnd)
+            self.log("Emulator window undocked into independent Framed Floating Window (Min/Max/Resize).", "CYBER")
+            return True
+        except Exception:
+            return False
+
+    def maximize_emulator_window(self, fullscreen_borderless: bool = False, leave_sidebar: bool = True, sidebar_width: int = None) -> bool:
+        """
+        If `self.embed_mode_enabled` is active and `embed_container_hwnd` is set, resizes the embedded emulator
+        inside its Studio Container Frame; otherwise positions the standalone framed Emulator window next to the sidebar.
+        """
+        if os.name != "nt":
+            return False
+        if self.embed_mode_enabled and self.embed_container_hwnd:
+            cw, ch = self.embed_container_size
+            return self.embed_emulator_in_container(self.embed_container_hwnd, cw, ch)
         try:
             user32 = ctypes.windll.user32
             found_hwnds = self._find_emulator_hwnds()
@@ -2170,6 +2270,7 @@ class ShoXxEngine:
             SWP_SHOWWINDOW = 0x0040
 
             for hwnd in found_hwnds:
+                user32.SetParent(hwnd, 0)
                 user32.ShowWindow(hwnd, SW_RESTORE)
                 if fullscreen_borderless:
                     user32.SetWindowLongW(hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE)
@@ -2186,7 +2287,7 @@ class ShoXxEngine:
         Controls the running Emulator Window Frame:
         - `action='minimize'`: Minimizes the Emulator window to the Windows taskbar (`SW_MINIMIZE`)
         - `action='maximize'`: Maximizes the Emulator window (`SW_SHOWMAXIMIZED`)
-        - `action='restore_dock'`: Restores and docks the Emulator window with full frame next to the sidebar
+        - `action='restore_dock'`: Restores and docks/embeds the Emulator window next to the sidebar
         """
         if os.name != "nt":
             return False
@@ -2199,23 +2300,30 @@ class ShoXxEngine:
 
             SW_MINIMIZE = 6
             SW_SHOWMAXIMIZED = 3
-            SW_RESTORE = 9
             GWL_STYLE = -16
             WS_OVERLAPPEDWINDOW = 0x00CF0000
             WS_VISIBLE = 0x10000000
 
             for hwnd in found_hwnds:
-                user32.SetWindowLongW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE)
                 if action == "minimize":
+                    user32.SetParent(hwnd, 0)
+                    user32.SetWindowLongW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE)
                     user32.ShowWindow(hwnd, SW_MINIMIZE)
                     self.log("Emulator window minimized to taskbar.", "INFO")
                 elif action == "maximize":
+                    user32.SetParent(hwnd, 0)
+                    user32.SetWindowLongW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE)
                     user32.ShowWindow(hwnd, SW_SHOWMAXIMIZED)
                     user32.SetForegroundWindow(hwnd)
                     self.log("Emulator window maximized with window frame.", "SUCCESS")
                 else:
-                    self.maximize_emulator_window(fullscreen_borderless=False, leave_sidebar=True)
-                    self.log("Emulator window restored & docked next to Gaming Extend sidebar.", "SUCCESS")
+                    if self.embed_container_hwnd:
+                        cw, ch = self.embed_container_size
+                        self.embed_emulator_in_container(self.embed_container_hwnd, cw, ch)
+                        self.log("Emulator window embedded inside Studio Container Frame.", "SUCCESS")
+                    else:
+                        self.maximize_emulator_window(fullscreen_borderless=False, leave_sidebar=True)
+                        self.log("Emulator window restored & docked next to Gaming Extend sidebar.", "SUCCESS")
             return True
         except Exception as e:
             self.log(f"Window control error: {e}", "WARN")
@@ -2251,6 +2359,7 @@ class ShoXxEngine:
     def stop_emulator(self):
         env = self.get_env()
         cflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        self._cached_emulator_hwnds.clear()
         try:
             subprocess.run([self.adb_exe, "emu", "kill"], env=env, capture_output=True, timeout=4, creationflags=cflags)
         except Exception:
