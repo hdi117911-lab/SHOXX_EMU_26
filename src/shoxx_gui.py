@@ -1045,15 +1045,15 @@ class ShoXxApp(tk.Tk):
         main_work = tk.Frame(self, bg=BG_ROOT)
         main_work.pack(side="left", fill="both", expand=True)
 
-        # Clean Top Navigation Bar
-        top_bar = tk.Frame(main_work, bg=BG_SURFACE, height=64, padx=24)
+        # Clean Top Navigation Bar (Expanded to accommodate 150% larger top-left neon logo)
+        top_bar = tk.Frame(main_work, bg=BG_SURFACE, height=130, padx=24)
         top_bar.pack(fill="x", side="top")
         top_bar.pack_propagate(False)
 
         title_box = tk.Frame(top_bar, bg=BG_SURFACE)
-        title_box.pack(side="left", fill="y", pady=8)
+        title_box.pack(side="left", fill="y", pady=6)
 
-        # Top-Left Logo from D:\SHOXX_EMU_26\splash.jpg
+        # Top-Left Logo from D:\SHOXX_EMU_26\splash.jpg (150% larger: 220x115)
         self.top_logo_photo = None
         self.window_icon_photo = None
         logo_path = os.path.join(BASE_DIR, "splash.jpg")
@@ -1062,7 +1062,7 @@ class ShoXxApp(tk.Tk):
         if os.path.isfile(logo_path):
             try:
                 raw_logo = Image.open(logo_path).convert("RGB")
-                logo_thumb = raw_logo.resize((88, 46), Image.Resampling.LANCZOS)
+                logo_thumb = raw_logo.resize((220, 115), Image.Resampling.LANCZOS)
                 self.top_logo_photo = ImageTk.PhotoImage(logo_thumb)
                 icon_thumb = raw_logo.resize((64, 64), Image.Resampling.LANCZOS)
                 self.window_icon_photo = ImageTk.PhotoImage(icon_thumb)
@@ -1070,17 +1070,17 @@ class ShoXxApp(tk.Tk):
 
                 self.top_logo_lbl = tk.Label(
                     title_box, image=self.top_logo_photo, bg=BG_CARD,
-                    bd=0, highlightthickness=1, highlightbackground="#00D8FF",
+                    bd=0, highlightthickness=2, highlightbackground="#00D8FF",
                     cursor="hand2"
                 )
-                self.top_logo_lbl.pack(side="left", padx=(0, 12))
+                self.top_logo_lbl.pack(side="left", padx=(0, 16))
                 self.top_logo_lbl.bind("<Button-1>", lambda e: self.replay_splash_overlay())
             except Exception:
                 pass
 
         tk.Label(
             title_box, text="ShoXx_Emu",
-            font=(FONT_UI, 16, "bold"), fg=TEXT_PRIMARY, bg=BG_SURFACE
+            font=(FONT_UI, 18, "bold"), fg=TEXT_PRIMARY, bg=BG_SURFACE
         ).pack(side="left")
         tk.Label(
             title_box, text="  STUDIO ENTERPRISE  •  PORTABLE STEALTH SMARTPHONE WORKSTATION",
@@ -1089,7 +1089,7 @@ class ShoXxApp(tk.Tk):
 
         # Top-Right Action Buttons
         nav_btns = tk.Frame(top_bar, bg=BG_SURFACE)
-        nav_btns.pack(side="right", pady=14)
+        nav_btns.pack(side="right", pady=46)
 
         self.btn_toggle_view = tk.Button(
             nav_btns, text="⊞ Emulator Frame", command=self.toggle_studio_viewport_mode,
