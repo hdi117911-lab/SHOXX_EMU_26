@@ -1,0 +1,4 @@
+# Ensure Android shell scripts always retain Unix LF line endings on Windows
+*.sh text eol=lf
+*.bat text eol=crlf
+*.py text eol=lf
